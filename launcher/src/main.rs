@@ -51,6 +51,7 @@ impl Default for Config {
 enum JsonVal {
     Bool(bool),
     Int(i64),
+    Num(String),
     Str(String),
     Arr(Vec<JsonVal>),
     Obj(Vec<(String, JsonVal)>),
@@ -133,9 +134,25 @@ impl<'a> JsonParser<'a> {
                     b'"' => out.push('"'),
                     b'\\' => out.push('\\'),
                     b'/' => out.push('/'),
+                    b'b' => out.push('\u{0008}'),
+                    b'f' => out.push('\u{000C}'),
                     b'n' => out.push('\n'),
                     b'r' => out.push('\r'),
                     b't' => out.push('\t'),
+                    b'u' => {
+                        if self.pos + 4 <= self.bytes.len() {
+                            if let Ok(hex) = std::str::from_utf8(&self.bytes[self.pos..self.pos + 4]) {
+                                if let Ok(code) = u32::from_str_radix(hex, 16) {
+                                    if let Some(ch) = char::from_u32(code) {
+                                        out.push(ch);
+                                        self.pos += 4;
+                                        continue;
+                                    }
+                                }
+                            }
+                        }
+                        out.push_str("\\u");
+                    }
                     _ => out.push(esc as char),
                 }
             } else {
@@ -154,16 +171,32 @@ impl<'a> JsonParser<'a> {
         while self.pos < self.bytes.len() && self.bytes[self.pos].is_ascii_digit() {
             self.pos += 1;
         }
+        let mut is_float = false;
         if self.bytes.get(self.pos) == Some(&b'.') {
+            is_float = true;
             self.pos += 1;
             while self.pos < self.bytes.len() && self.bytes[self.pos].is_ascii_digit() {
                 self.pos += 1;
             }
-            return Ok(JsonVal::Null);
+        }
+        if matches!(self.bytes.get(self.pos), Some(b'e' | b'E')) {
+            is_float = true;
+            self.pos += 1;
+            if matches!(self.bytes.get(self.pos), Some(b'+' | b'-')) {
+                self.pos += 1;
+            }
+            while self.pos < self.bytes.len() && self.bytes[self.pos].is_ascii_digit() {
+                self.pos += 1;
+            }
         }
         let s = std::str::from_utf8(&self.bytes[start..self.pos]).map_err(|e| e.to_string())?;
-        let n = s.parse::<i64>().map_err(|e| e.to_string())?;
-        Ok(JsonVal::Int(n))
+        if is_float {
+            Ok(JsonVal::Num(s.to_string()))
+        } else if let Ok(n) = s.parse::<i64>() {
+            Ok(JsonVal::Int(n))
+        } else {
+            Ok(JsonVal::Num(s.to_string()))
+        }
     }
 
     fn parse_arr(&mut self) -> Result<JsonVal, String> {
@@ -220,14 +253,41 @@ fn json_escape(s: &str) -> String {
         match ch {
             '"' => out.push_str("\\\""),
             '\\' => out.push_str("\\\\"),
+            '\u{0008}' => out.push_str("\\b"),
+            '\u{000C}' => out.push_str("\\f"),
             '\n' => out.push_str("\\n"),
             '\r' => out.push_str("\\r"),
             '\t' => out.push_str("\\t"),
+            c if (c as u32) < 0x20 => {
+                out.push_str(&format!("\\u{:04x}", c as u32));
+            }
             c => out.push(c),
         }
     }
     out.push('"');
     out
+}
+
+fn json_serialize(val: &JsonVal) -> String {
+    match val {
+        JsonVal::Null => "null".to_string(),
+        JsonVal::Bool(b) => b.to_string(),
+        JsonVal::Int(n) => n.to_string(),
+        JsonVal::Num(s) => s.clone(),
+        JsonVal::Str(s) => json_escape(s),
+        JsonVal::Arr(items) => {
+            let inner = items.iter().map(json_serialize).collect::<Vec<_>>().join(",");
+            format!("[{inner}]")
+        }
+        JsonVal::Obj(entries) => {
+            let inner = entries
+                .iter()
+                .map(|(k, v)| format!("{}:{}", json_escape(k), json_serialize(v)))
+                .collect::<Vec<_>>()
+                .join(",");
+            format!("{{{inner}}}")
+        }
+    }
 }
 
 impl Config {
@@ -550,50 +610,101 @@ fn resolve_widevine_path(configured: &str) -> Option<PathBuf> {
 }
 
 struct SearchEngineSpec {
+    id: &'static str,
     short_name: &'static str,
     keyword: &'static str,
     favicon_url: &'static str,
     url: &'static str,
     suggest_url: &'static str,
+    new_tab_url: &'static str,
+    synced_guid: &'static str,
     prepopulate_id: i64,
 }
 
 fn search_engine_spec(name: &str) -> Option<SearchEngineSpec> {
     match name.trim().to_ascii_lowercase().as_str() {
         "duckduckgo" | "ddg" => Some(SearchEngineSpec {
+            id: "3",
             short_name: "DuckDuckGo",
             keyword: "duckduckgo.com",
             favicon_url: "https://duckduckgo.com/favicon.ico",
             url: "https://duckduckgo.com/?q={searchTerms}",
             suggest_url: "https://duckduckgo.com/ac/?q={searchTerms}&type=list",
+            new_tab_url: "https://duckduckgo.com/chrome_newtab",
+            synced_guid: "485bf7d3-0215-45af-87dc-538868000092",
             prepopulate_id: 92,
         }),
         "brave" => Some(SearchEngineSpec {
+            id: "4",
             short_name: "Brave",
             keyword: "search.brave.com",
             favicon_url: "https://cdn.search.brave.com/serp/v2/_app/immutable/assets/favicon.ico",
             url: "https://search.brave.com/search?q={searchTerms}",
             suggest_url: "https://search.brave.com/api/suggest?q={searchTerms}",
+            new_tab_url: "",
+            synced_guid: "485bf7d3-0215-45af-87dc-538868000109",
             prepopulate_id: 109,
         }),
         "startpage" => Some(SearchEngineSpec {
+            id: "2",
             short_name: "Startpage",
             keyword: "startpage.com",
             favicon_url: "https://www.startpage.com/sp/cdn/favicons/favicon-16x16-gradient.png",
             url: "https://www.startpage.com/sp/search?query={searchTerms}",
             suggest_url: "https://www.startpage.com/osuggestions?q={searchTerms}",
+            new_tab_url: "",
+            synced_guid: "485bf7d3-0215-45af-87dc-538868000000",
             prepopulate_id: 0,
         }),
         "google" => Some(SearchEngineSpec {
+            id: "2",
             short_name: "Google",
             keyword: "google.com",
             favicon_url: "https://www.google.com/favicon.ico",
             url: "https://www.google.com/search?q={searchTerms}",
             suggest_url: "https://www.google.com/complete/search?client=chrome&q={searchTerms}",
+            new_tab_url: "",
+            synced_guid: "485bf7d3-0215-45af-87dc-538868000001",
             prepopulate_id: 1,
         }),
         _ => None,
     }
+}
+
+fn build_template_url_json(spec: &SearchEngineSpec) -> JsonVal {
+    JsonVal::Obj(vec![
+        ("alternate_urls".into(), JsonVal::Arr(vec![])),
+        ("contextual_search_url".into(), JsonVal::Str(String::new())),
+        ("created_from_play_api".into(), JsonVal::Bool(false)),
+        ("date_created".into(), JsonVal::Str("0".into())),
+        ("doodle_url".into(), JsonVal::Str(String::new())),
+        ("enforced_by_policy".into(), JsonVal::Bool(false)),
+        ("favicon_url".into(), JsonVal::Str(spec.favicon_url.into())),
+        ("featured_by_policy".into(), JsonVal::Bool(false)),
+        ("id".into(), JsonVal::Str(spec.id.into())),
+        ("input_encodings".into(), JsonVal::Arr(vec![JsonVal::Str("UTF-8".into())])),
+        ("is_active".into(), JsonVal::Int(0)),
+        ("keyword".into(), JsonVal::Str(spec.keyword.into())),
+        ("last_modified".into(), JsonVal::Str("0".into())),
+        ("last_visited".into(), JsonVal::Str("0".into())),
+        ("new_tab_url".into(), JsonVal::Str(spec.new_tab_url.into())),
+        ("originating_url".into(), JsonVal::Str(String::new())),
+        ("policy_origin".into(), JsonVal::Int(0)),
+        ("preconnect_to_search_url".into(), JsonVal::Bool(false)),
+        ("prefetch_likely_navigations".into(), JsonVal::Bool(false)),
+        ("prepopulate_id".into(), JsonVal::Int(spec.prepopulate_id)),
+        ("safe_for_autoreplace".into(), JsonVal::Bool(true)),
+        ("search_intent_params".into(), JsonVal::Arr(vec![])),
+        ("search_url_post_params".into(), JsonVal::Str(String::new())),
+        ("send_x_geo_header".into(), JsonVal::Bool(false)),
+        ("short_name".into(), JsonVal::Str(spec.short_name.into())),
+        ("starter_pack_id".into(), JsonVal::Int(0)),
+        ("suggestions_url".into(), JsonVal::Str(spec.suggest_url.into())),
+        ("suggestions_url_post_params".into(), JsonVal::Str(String::new())),
+        ("synced_guid".into(), JsonVal::Str(spec.synced_guid.into())),
+        ("url".into(), JsonVal::Str(spec.url.into())),
+        ("usage_count".into(), JsonVal::Int(0)),
+    ])
 }
 
 fn sql_escape(s: &str) -> String {
@@ -604,15 +715,12 @@ fn ensure_search_engine(profile_dir: &Path, engine: &str, force: bool, cmd_hint:
     let Some(spec) = search_engine_spec(engine) else {
         return;
     };
-    if which("sqlite3").is_none() {
-        return;
-    }
     if profile_dir.join("SingletonLock").exists() {
         return;
     }
 
-    let web_data = profile_dir.join("Default/Web Data");
-    if !web_data.is_file() {
+    let prefs_path = profile_dir.join("Default/Preferences");
+    if !prefs_path.is_file() {
         if let Some(cmd) = cmd_hint {
             let _ = Command::new(&cmd[0])
                 .args(&cmd[1..])
@@ -629,42 +737,69 @@ fn ensure_search_engine(profile_dir: &Path, engine: &str, force: bool, cmd_hint:
         }
     }
 
-    if !web_data.is_file() {
-        return;
-    }
+    if prefs_path.is_file() {
+        if let Ok(raw) = fs::read_to_string(&prefs_path) {
+            if let Ok(JsonVal::Obj(mut entries)) = JsonParser::new(&raw).parse_val() {
+                let already_set = if !force {
+                    entries.iter().find(|(k, _)| k == "default_search_provider_data").is_some_and(|(_, v)| {
+                        if let JsonVal::Obj(sub) = v {
+                            sub.iter().any(|(sk, sv)| {
+                                if sk == "template_url_data" {
+                                    if let JsonVal::Obj(tpl) = sv {
+                                        return tpl.iter().any(|(tk, tv)| {
+                                            tk == "url"
+                                                && matches!(tv, JsonVal::Str(u) if u != "http://{searchTerms}" && !u.is_empty())
+                                        });
+                                    }
+                                }
+                                false
+                            })
+                        } else {
+                            false
+                        }
+                    })
+                } else {
+                    false
+                };
 
-    if !force {
-        let check = Command::new("sqlite3")
-            .arg(&web_data)
-            .arg("SELECT k.short_name, k.url, m.value FROM keywords k LEFT JOIN meta m ON m.key='Default Search Provider ID' WHERE k.id=2;")
-            .output();
-        if let Ok(out) = check {
-            let s = String::from_utf8_lossy(&out.stdout);
-            let trimmed = s.trim();
-            let is_nosearch = trimmed.contains("No Search") || trimmed.contains("http://{searchTerms}");
-            let has_meta = trimmed.ends_with('|') == false && !trimmed.is_empty();
-            if !is_nosearch && has_meta {
-                return;
+                if !already_set {
+                    let tpl = build_template_url_json(&spec);
+                    let dspd = JsonVal::Obj(vec![
+                        ("mirrored_template_url_data".into(), tpl.clone()),
+                        ("template_url_data".into(), tpl),
+                    ]);
+                    entries.retain(|(k, _)| k != "default_search_provider_data");
+                    entries.push(("default_search_provider_data".into(), dspd));
+
+                    if let Some((_, JsonVal::Obj(prot))) = entries.iter_mut().find(|(k, _)| k == "protection") {
+                        if let Some((_, JsonVal::Obj(macs))) = prot.iter_mut().find(|(k, _)| k == "macs") {
+                            macs.retain(|(k, _)| k != "default_search_provider_data");
+                        }
+                    }
+                    let _ = fs::write(&prefs_path, json_serialize(&JsonVal::Obj(entries)));
+                }
             }
         }
     }
 
-    let sql = format!(
-        "UPDATE keywords SET short_name='{}', keyword='{}', favicon_url='{}', url='{}', suggest_url='{}', prepopulate_id={} WHERE id=2; \
-         INSERT OR REPLACE INTO meta(key, value) VALUES ('Default Search Provider ID', '2');",
-        sql_escape(spec.short_name),
-        sql_escape(spec.keyword),
-        sql_escape(spec.favicon_url),
-        sql_escape(spec.url),
-        sql_escape(spec.suggest_url),
-        spec.prepopulate_id
-    );
-    let _ = Command::new("sqlite3")
-        .arg(&web_data)
-        .arg(sql)
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status();
+    let web_data = profile_dir.join("Default/Web Data");
+    if web_data.is_file() && which("sqlite3").is_some() {
+        let sql = format!(
+            "UPDATE keywords SET short_name='{}', keyword='{}', favicon_url='{}', url='{}', suggest_url='{}', prepopulate_id={} WHERE id=2 AND (short_name='No Search' OR url='http://{{searchTerms}}');",
+            sql_escape(spec.short_name),
+            sql_escape(spec.keyword),
+            sql_escape(spec.favicon_url),
+            sql_escape(spec.url),
+            sql_escape(spec.suggest_url),
+            spec.prepopulate_id
+        );
+        let _ = Command::new("sqlite3")
+            .arg(&web_data)
+            .arg(sql)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+    }
 }
 
 fn sync_widevine_symlink(profile_dir: &Path, enabled: bool, widevine_cfg: &str) {
