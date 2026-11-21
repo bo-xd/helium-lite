@@ -16,7 +16,7 @@ FETCH_ONLY=0
 RUNTIME_DIR="${HOME}/.local/share/kestrel/runtime"
 
 REQUIRED_CMDS=(
-  ninja gn clang lld llvm-ar nodejs gperf bison flex quilt git curl tar xz
+  ninja gn clang lld llvm-ar node gperf bison flex quilt git curl tar xz
 )
 
 PACMAN_PKGS=(
