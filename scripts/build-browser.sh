@@ -25,7 +25,7 @@ REQUIRED_ARCH_PKGS=(
 
 PACMAN_PKGS=(
   ninja gn clang lld llvm compiler-rt nodejs gperf bison flex quilt git curl tar xz
-  esbuild typescript rust rust-bindgen rust-src jdk-headless go
+  esbuild typescript rust rust-bindgen rust-src rustc-dev jdk-headless go
 )
 
 usage() {
@@ -198,7 +198,7 @@ if [[ ! -f "${SRC_DIR}/.kestrel_patched" ]]; then
 
   ln -sfn /usr/bin/node third_party/node/linux/node-linux-x64/bin/node
   ln -sfn /usr/bin/java third_party/jdk/current/bin/java
-  ln -sfn /usr/bin/rustc third_party/rust-toolchain/bin/rustc
+  ln -sfn "$(command -v rustc)" third_party/rust-toolchain/bin/rustc
   ln -sfn /usr/bin/gperf third_party/gperf/cipd/bin/gperf
   ln -sfn /usr/bin/go third_party/dawn/tools/golang/linux-amd64/bin/go
   ln -sfn "${CRUBIT_DIR}" third_party/rust-toolchain/crubit/lib/third_party/crubit
@@ -222,8 +222,26 @@ export NM=nm
 export RUSTC_BOOTSTRAP=1
 
 CLANG_VER="$(clang --version | grep -m1 version | sed 's/.* \([0-9]\+\).*/\1/')"
+if command -v rustup >/dev/null 2>&1 && rustup toolchain list | grep -q '^1\.100\.0'; then
+  export RUSTUP_TOOLCHAIN=1.100.0
+fi
 RUSTC_VER="$(rustc --version | awk '{print $2}')"
+RUST_SYSROOT="$(rustc --print sysroot)"
+RUST_HOST_TUPLE="$(rustc --print host-tuple)"
 SITE_PKGS="$(python3 -c 'import site; print(site.getsitepackages()[0])')"
+ln -sfn "$(command -v rustc)" "${SRC_DIR}/third_party/rust-toolchain/bin/rustc"
+
+if [[ ! -x "${SRC_DIR}/third_party/rust-toolchain/crubit/bin/cc_bindings_from_rs" ]]; then
+  echo "Building crubit cc_bindings_from_rs..."
+  pushd "${CRUBIT_DIR}" >/dev/null
+  cargo fetch --locked --target "${RUST_HOST_TUPLE}"
+  CARGO_TARGET_DIR=target \
+  RUSTC_BOOTSTRAP=1 \
+  RUSTFLAGS="${RUSTFLAGS:-} -Clink-args=-Wl,-z,origin -Clink-args=-Wl,-rpath,${RUST_SYSROOT}/lib/rustlib/${RUST_HOST_TUPLE}/lib" \
+    cargo build --frozen --release -p cc_bindings_from_rs --bin cc_bindings_from_rs
+  install -Dm755 -t "${SRC_DIR}/third_party/rust-toolchain/crubit/bin/" target/release/cc_bindings_from_rs
+  popd >/dev/null
+fi
 
 mkdir -p out/Kestrel
 cp "${REPO_ROOT}/browser/args.gn" out/Kestrel/args.gn
@@ -231,7 +249,7 @@ cat >> out/Kestrel/args.gn <<EOF
 clang_version="${CLANG_VER}"
 v8_metagen_libclang_so="/usr/lib/libclang.so"
 v8_metagen_libclang_bindings_dir="${SITE_PKGS}"
-rust_sysroot_absolute="/usr"
+rust_sysroot_absolute="${RUST_SYSROOT}"
 rust_bindgen_root="/usr"
 rustc_version="${RUSTC_VER}"
 rust_crubit_root="//third_party/rust-toolchain/crubit/"
