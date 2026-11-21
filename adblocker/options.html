@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Helium Shield — Options</title>
+  <title>Kestrel Shield — Options</title>
   <style>
     :root {
       color-scheme: dark;
@@ -122,7 +122,7 @@
 <body>
   <main class="container">
     <header>
-      <h1>Helium Shield Settings</h1>
+      <h1>Kestrel Shield Settings</h1>
       <p class="sub">Ultra-low-RAM Manifest V3 ad &amp; tracker blocker powered by declarativeNetRequest.</p>
     </header>
 
@@ -166,7 +166,7 @@
       <h2>Filter Ruleset</h2>
       <p class="sub" id="rulesetInfo">
         To refresh <code>rules/ruleset.json</code> from EasyList, EasyPrivacy, and Peter Lowe's list, run:
-        <code>python3 scripts/build-filters.py</code>
+        <code>rustc -O scripts/build_filters.rs -o scripts/build_filters &amp;&amp; ./scripts/build_filters</code>
       </p>
     </section>
   </main>

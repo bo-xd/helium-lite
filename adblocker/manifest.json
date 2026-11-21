@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "Helium Shield",
+  "name": "Kestrel Shield",
   "version": "1.0.0",
   "description": "Ultra-low-RAM Manifest V3 ad and tracker blocker for Ungoogled Chromium using declarativeNetRequest.",
   "permissions": [
@@ -30,7 +30,7 @@
   ],
   "action": {
     "default_popup": "popup.html",
-    "default_title": "Helium Shield",
+    "default_title": "Kestrel Shield",
     "default_icon": {
       "16": "icons/icon16.png",
       "48": "icons/icon48.png",

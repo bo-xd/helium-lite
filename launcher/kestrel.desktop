@@ -1,0 +1,27 @@
+[Desktop Entry]
+Version=1.0
+Name=Kestrel
+GenericName=Web Browser
+Comment=Independent low-RAM browser with tab sleeping and built-in adblocker
+Exec=/home/bo/.local/bin/kestrel %U
+Terminal=false
+Type=Application
+Icon=kestrel
+Categories=Network;WebBrowser;
+MimeType=text/html;text/xml;application/xhtml+xml;x-scheme-handler/http;x-scheme-handler/https;
+StartupNotify=true
+StartupWMClass=Kestrel
+Actions=new-window;new-private-window;settings;
+
+[Desktop Action new-window]
+Name=New Window
+Exec=/home/bo/.local/bin/kestrel --new-window
+
+[Desktop Action new-private-window]
+Name=New Incognito Window
+Exec=/home/bo/.local/bin/kestrel --incognito
+
+[Desktop Action settings]
+Name=Kestrel Settings
+Exec=/home/bo/.local/bin/kestrel-settings
+Terminal=true

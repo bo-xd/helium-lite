@@ -1,7 +1,7 @@
 "use strict";
 
 (() => {
-  const STYLE_ID = "helium-shield-cosmetic";
+  const STYLE_ID = "kestrel-shield-cosmetic";
   const AD_SELECTORS = [
     "ins.adsbygoogle",
     "iframe[id^='google_ads_iframe']",

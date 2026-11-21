@@ -3,22 +3,22 @@ set -euo pipefail
 
 SOURCE_ROOT="${HOME}/.config/net.imput.helium"
 SOURCE_PROFILE="Default"
-TARGET_ROOT="${HOME}/.config/helium-lite/profile"
+TARGET_ROOT="${HOME}/.config/kestrel/profile"
 TARGET_PROFILE="Default"
 MODE="bookmarks"
 DRY_RUN=0
 
 usage() {
   cat <<'EOF'
-Usage: helium-import.sh [OPTIONS]
+Usage: kestrel-import [OPTIONS]
 
-Safely import bookmarks (and optionally Favicons/History) from Helium into Helium Lite.
+Safely import bookmarks (and optionally Favicons/History) from another Chromium/Helium profile into Kestrel.
 
 Options:
-  --bookmarks-only   Copy Bookmarks and Bookmarks.bak only (default, safe while Helium runs)
-  --all              Also copy Favicons and History (uses sqlite3 .backup if Helium is running)
-  --source DIR       Helium config root (default: ~/.config/net.imput.helium)
-  --target DIR       Helium Lite profile root (default: ~/.config/helium-lite/profile)
+  --bookmarks-only   Copy Bookmarks and Bookmarks.bak only (default, safe while source browser runs)
+  --all              Also copy Favicons and History (uses sqlite3 .backup if source browser is running)
+  --source DIR       Source browser config root (default: ~/.config/net.imput.helium)
+  --target DIR       Kestrel profile root (default: ~/.config/kestrel/profile)
   --dry-run          Print actions without modifying files
   -h, --help         Show this help
 EOF
@@ -40,18 +40,18 @@ SRC_DIR="${SOURCE_ROOT}/${SOURCE_PROFILE}"
 DST_DIR="${TARGET_ROOT}/${TARGET_PROFILE}"
 
 if [[ ! -d "${SRC_DIR}" ]]; then
-  echo "Error: Helium profile directory not found at ${SRC_DIR}" >&2
+  echo "Error: Source profile directory not found at ${SRC_DIR}" >&2
   exit 1
 fi
 
-HELIUM_RUNNING=0
+SOURCE_RUNNING=0
 if [[ -L "${SOURCE_ROOT}/SingletonLock" ]] || pgrep -x "helium" >/dev/null 2>&1; then
-  HELIUM_RUNNING=1
-  echo "Note: Helium appears to be running (SingletonLock present)."
+  SOURCE_RUNNING=1
+  echo "Note: Source browser appears to be running (SingletonLock present)."
 fi
 
 if [[ -L "${TARGET_ROOT}/SingletonLock" ]]; then
-  echo "Error: Helium Lite is currently running (${TARGET_ROOT}/SingletonLock exists). Close Helium Lite first." >&2
+  echo "Error: Kestrel is currently running (${TARGET_ROOT}/SingletonLock exists). Close Kestrel first." >&2
   exit 1
 fi
 
@@ -103,12 +103,12 @@ copy_sqlite_safe() {
     cp -a "${dst}" "${BACKUP_DIR}/${name}"
   fi
 
-  if [[ "${HELIUM_RUNNING}" -eq 1 ]]; then
+  if [[ "${SOURCE_RUNNING}" -eq 1 ]]; then
     if command -v sqlite3 >/dev/null 2>&1; then
       sqlite3 "${src}" ".backup '${dst}'"
       echo "Imported (sqlite3 online backup): ${name}"
     else
-      echo "Warning: Skipping ${name} because Helium is running and sqlite3 is not installed." >&2
+      echo "Warning: Skipping ${name} because source browser is running and sqlite3 is not installed." >&2
     fi
   else
     cp -a "${src}" "${dst}"
@@ -129,4 +129,4 @@ fi
 
 echo
 echo "Done. Passwords/cookies are encrypted per-profile/keyring and are not copied;"
-echo "if needed, export passwords as CSV from Helium settings and import in chrome://password-manager/settings."
+echo "if needed, export passwords as CSV from your old browser and import in chrome://password-manager/settings."

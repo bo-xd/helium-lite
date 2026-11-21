@@ -1,50 +1,57 @@
-# Helium Lite
+# Kestrel
 
-A low-RAM **Ungoogled Chromium** launcher, configuration suite, and custom MV3 adblocker designed to replace heavier Chromium setups while preserving VA-API video acceleration, tab sleeping, and easy profile migration from Helium.
+**Kestrel** is an independent, low-RAM desktop browser powered by Ungoogled Chromium, with a native **Rust** launcher & settings manager, isolated profile/cache/process identity (`--class=Kestrel`), aggressive tab sleeping, VA-API hardware video acceleration, and a custom MV3 adblocker (**Kestrel Shield**).
 
 ## Directory Layout
 
-- `launcher/helium-lite` — Main launcher script; reads `~/.config/helium-lite/config.json` and builds tuned Chromium flags.
-- `launcher/helium-lite-settings` — Interactive CLI/TUI (and scriptable CLI) to toggle features on/off.
-- `launcher/config.default.json` — Default configuration template.
-- `launcher/helium-lite.desktop` — Desktop entry for application menus.
+- `launcher/Cargo.toml` & `launcher/src/main.rs` — Zero-dependency native Rust binary providing both `kestrel` (launcher) and `kestrel-settings` (TUI + CLI settings manager).
+- `launcher/config.default.json` — Default configuration template (`~/.config/kestrel/config.json`).
+- `launcher/kestrel.desktop` — Desktop entry (`Name=Kestrel`, `StartupWMClass=Kestrel`, `Icon=kestrel`, HTTP/HTTPS handlers, and desktop actions).
+- `assets/kestrel.svg` & `assets/kestrel.png` — Custom Kestrel browser icon.
 - `policies/low-ram-policy.json` — Chromium managed policy template for Memory Saver and telemetry/background suppression.
-- `scripts/helium-import.sh` — Safe bookmark/favicon/history importer from Helium (`~/.config/net.imput.helium/Default`).
-- `scripts/install.sh` — Installs CLI symlinks into `~/.local/bin`, the `.desktop` entry, and initializes `~/.config/helium-lite/config.json`.
-- `adblocker/` — Custom ultra-low-RAM Manifest V3 adblocker loaded via `--load-extension`.
+- `scripts/kestrel-import` — Safe bookmark/favicon/history importer (defaults to importing from `~/.config/net.imput.helium/Default`).
+- `scripts/install.sh` — Builds `cargo build --release`, installs `kestrel`, `kestrel-settings`, `kestrel-import`, icons, `.desktop` entry, and supports `--set-default`.
+- `adblocker/` — Custom ultra-low-RAM Manifest V3 adblocker (**Kestrel Shield**) loaded via `--load-extension`.
 
 ## Quick Start
 
-1. Install Ungoogled Chromium (e.g., on Arch Linux: `flatpak install flathub io.github.ungoogled_software.ungoogled_chromium` or `yay -S ungoogled-chromium-bin`). When using Flatpak, `helium-lite` automatically passes `--filesystem` flags for `~/.config/helium-lite`, `adblocker/`, and `WidevineCdm`.
-2. Run the installer:
+1. Ensure a Chromium runtime is available:
+   - Local standalone runtime at `~/.local/share/kestrel/runtime/chrome`, OR
+   - Native `ungoogled-chromium` (`yay -S ungoogled-chromium-bin`), OR
+   - User Flatpak (`flatpak install flathub io.github.ungoogled_software.ungoogled_chromium`). When using Flatpak, `kestrel` automatically forwards `--filesystem` flags for `~/.config/kestrel`, `~/.cache/kestrel`, `adblocker/`, and `WidevineCdm`.
+2. Build & install Kestrel (requires `rustc`/`cargo`):
    ```bash
    ./scripts/install.sh
+   # Or also register Kestrel as your default web browser:
+   ./scripts/install.sh --set-default
    ```
-3. (Optional) Import bookmarks from Helium:
+3. (Optional) Import bookmarks from an existing Chromium/Helium profile:
    ```bash
-   ./scripts/helium-import.sh
+   kestrel-import
    # Or include Favicons and History:
-   ./scripts/helium-import.sh --all
+   kestrel-import --all
    ```
-4. Launch the browser:
+4. Launch Kestrel:
    ```bash
-   helium-lite
+   kestrel
    ```
 
-## Configuration (`~/.config/helium-lite/config.json`)
+## Configuration (`~/.config/kestrel/config.json`)
 
 Manage settings interactively with:
 ```bash
-helium-lite-settings
+kestrel-settings
 # or:
-helium-lite --settings
+kestrel settings
+# or:
+kestrel --settings
 ```
 
 Non-interactive CLI examples:
 ```bash
-helium-lite-settings --list
-helium-lite-settings --toggle widevine_drm
-helium-lite-settings --set renderer_process_limit=6 --set v8_max_old_space_mb=768
+kestrel-settings --list
+kestrel-settings --toggle widevine_drm
+kestrel-settings --set renderer_process_limit=6 --set v8_max_old_space_mb=768
 ```
 
 ### Feature Toggles
@@ -53,15 +60,15 @@ helium-lite-settings --set renderer_process_limit=6 --set v8_max_old_space_mb=76
 | --- | --- | --- |
 | `tab_sleeping` | `true` | Enables Memory Saver (`HighEfficiencyModeAvailable`, `MemorySaverModeAvailable`), caps renderer processes (`--renderer-process-limit`), caps V8 heap (`--js-flags=--max-old-space-size`), and disables background networking, telemetry, prefetching, and speculation rules. |
 | `hardware_accel` | `true` | Enables GPU rasterization, zero-copy, Wayland/X11 auto Ozone platform, WebGL, and VA-API hardware video decoding/encoding (`VaapiVideoDecoder`, `VaapiVideoEncoder`, `VaapiVideoDecodeLinuxGL`). |
-| `widevine_drm` | `false` | Symlinks `WidevineCdm` (from `/usr/lib/chromium/WidevineCdm`, `~/.config/sh.cider.genten/WidevineCdm`, or Helium) into the Helium Lite profile when enabled, and removes the symlink when disabled. |
+| `widevine_drm` | `false` | Symlinks `WidevineCdm` (from `~/.local/share/kestrel/runtime/WidevineCdm`, `/usr/lib/chromium/WidevineCdm`, `~/.config/sh.cider.genten/WidevineCdm`, or Helium) into the Kestrel profile when enabled, and removes the symlink when disabled. |
 | `adblocker` | `true` | Loads `adblocker/` via `--load-extension`. |
 | `extension_support` | `true` | Enables Chrome Web Store `.crx` install prompts (`--extension-mime-request-handling=always-prompt-for-install`). When `false`, disables other extensions while keeping the built-in adblocker if enabled. |
 
 ### Launcher Options
 
-- `helium-lite --dry-run` (or `--print-cmd`) — Print the resolved browser command and flags without launching.
-- `helium-lite --settings` — Open `helium-lite-settings`.
-- `helium-lite --import` — Run `scripts/helium-import.sh`.
+- `kestrel --dry-run` (or `--print-cmd`) — Print the resolved browser command and flags without launching.
+- `kestrel settings` / `kestrel --settings` — Open `kestrel-settings`.
+- `kestrel --import` — Run `kestrel-import`.
 
 ## Managed Policy (Optional)
 
