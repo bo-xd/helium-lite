@@ -1,0 +1,287 @@
+#!/usr/bin/env python3
+"""Helium Lite: Low-RAM Ungoogled Chromium launcher."""
+
+from __future__ import annotations
+
+import json
+import os
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+CONFIG_DIR = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "helium-lite"
+CONFIG_FILE = CONFIG_DIR / "config.json"
+
+SCRIPT_PATH = Path(__file__).resolve()
+REPO_ROOT = SCRIPT_PATH.parent.parent
+DEFAULT_CONFIG_FILE = SCRIPT_PATH.parent / "config.default.json"
+ADBLOCKER_DIR = REPO_ROOT / "adblocker"
+SETTINGS_BIN = SCRIPT_PATH.parent / "helium-lite-settings"
+IMPORT_SCRIPT = REPO_ROOT / "scripts" / "helium-import.sh"
+
+BINARY_CANDIDATES = [
+    "ungoogled-chromium",
+    "ungoogled-chromium-bin",
+    "chromium",
+]
+
+WIDEVINE_CANDIDATES = [
+    Path("/usr/lib/chromium/WidevineCdm"),
+    Path("/usr/lib/ungoogled-chromium/WidevineCdm"),
+    Path("/opt/google/chrome/WidevineCdm"),
+    Path.home() / ".config/sh.cider.genten/WidevineCdm",
+    Path.home() / ".config/net.imput.helium/WidevineCdm",
+]
+
+
+def load_default_config() -> dict:
+    if DEFAULT_CONFIG_FILE.is_file():
+        with DEFAULT_CONFIG_FILE.open("r", encoding="utf-8") as f:
+            return json.load(f)
+    return {
+        "browser_binary": "auto",
+        "profile_dir": str(CONFIG_DIR / "profile"),
+        "tab_sleeping": True,
+        "hardware_accel": True,
+        "widevine_drm": False,
+        "adblocker": True,
+        "extension_support": True,
+        "renderer_process_limit": 4,
+        "v8_max_old_space_mb": 512,
+        "widevine_path": "auto",
+        "extra_flags": [],
+    }
+
+
+def ensure_config() -> dict:
+    defaults = load_default_config()
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    if not CONFIG_FILE.is_file():
+        with CONFIG_FILE.open("w", encoding="utf-8") as f:
+            json.dump(defaults, f, indent=2)
+            f.write("\n")
+        return defaults
+
+    with CONFIG_FILE.open("r", encoding="utf-8") as f:
+        user_cfg = json.load(f)
+
+    merged = {**defaults, **user_cfg}
+    if merged != user_cfg:
+        with CONFIG_FILE.open("w", encoding="utf-8") as f:
+            json.dump(merged, f, indent=2)
+            f.write("\n")
+    return merged
+
+
+def resolve_browser_command(configured: str) -> list[str]:
+    if configured and configured != "auto":
+        expanded = os.path.expanduser(configured)
+        if shutil.which(expanded) or Path(expanded).is_file():
+            return [expanded]
+        raise FileNotFoundError(f"Configured browser_binary not found: {configured}")
+
+    for candidate in BINARY_CANDIDATES:
+        found = shutil.which(candidate)
+        if found:
+            return [found]
+
+    if shutil.which("flatpak"):
+        probe = subprocess.run(
+            ["flatpak", "info", "io.github.ungoogled_software.ungoogled_chromium"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+        if probe.returncode == 0:
+            return ["flatpak", "run", "io.github.ungoogled_software.ungoogled_chromium"]
+
+    raise FileNotFoundError(
+        "No Ungoogled Chromium binary found. Install `ungoogled-chromium` or set `browser_binary` in "
+        f"{CONFIG_FILE}."
+    )
+
+
+def resolve_widevine_path(configured: str) -> Path | None:
+    if configured and configured != "auto":
+        p = Path(os.path.expanduser(configured))
+        return p if p.exists() else None
+    for candidate in WIDEVINE_CANDIDATES:
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def sync_widevine_symlink(profile_dir: Path, enabled: bool, widevine_cfg: str) -> None:
+    target_link = profile_dir / "WidevineCdm"
+    if enabled:
+        src = resolve_widevine_path(widevine_cfg)
+        if src and not target_link.exists():
+            try:
+                target_link.symlink_to(src)
+            except OSError:
+                pass
+    else:
+        if target_link.is_symlink():
+            try:
+                target_link.unlink()
+            except OSError:
+                pass
+
+
+def build_flags(cfg: dict, profile_dir: Path) -> list[str]:
+    flags: list[str] = [
+        f"--user-data-dir={profile_dir}",
+        "--no-first-run",
+        "--no-default-browser-check",
+    ]
+
+    enable_features: list[str] = []
+    disable_features: list[str] = []
+
+    if cfg.get("tab_sleeping", True):
+        proc_limit = int(cfg.get("renderer_process_limit", 4))
+        v8_mb = int(cfg.get("v8_max_old_space_mb", 512))
+        flags.extend(
+            [
+                f"--renderer-process-limit={proc_limit}",
+                f"--js-flags=--max-old-space-size={v8_mb}",
+                "--disable-background-networking",
+                "--disable-component-update",
+                "--disable-domain-reliability",
+                "--disable-breakpad",
+                "--disable-crash-reporter",
+                "--no-pings",
+                "--dns-prefetch-disable",
+                "--disable-sync",
+            ]
+        )
+        enable_features.extend(["HighEfficiencyModeAvailable", "MemorySaverModeAvailable"])
+        disable_features.extend(
+            [
+                "OptimizationHints",
+                "OptimizationTargetPrediction",
+                "PreloadMediaEngagementData",
+                "SpeculationRulesPrefetchProxy",
+                "Prerender2",
+                "NetworkTimeServiceQuerying",
+            ]
+        )
+
+    if cfg.get("hardware_accel", True):
+        flags.extend(
+            [
+                "--ozone-platform-hint=auto",
+                "--enable-gpu-rasterization",
+                "--enable-zero-copy",
+                "--ignore-gpu-blocklist",
+            ]
+        )
+        enable_features.extend(["VaapiVideoDecoder", "VaapiVideoEncoder", "VaapiVideoDecodeLinuxGL"])
+    else:
+        flags.extend(["--disable-gpu", "--disable-webgl"])
+
+    adblocker_enabled = bool(cfg.get("adblocker", True)) and (ADBLOCKER_DIR / "manifest.json").is_file()
+    ext_support = bool(cfg.get("extension_support", True))
+
+    if adblocker_enabled:
+        flags.append(f"--load-extension={ADBLOCKER_DIR}")
+        if not ext_support:
+            flags.append(f"--disable-extensions-except={ADBLOCKER_DIR}")
+    elif not ext_support:
+        flags.append("--disable-extensions")
+
+    if ext_support:
+        flags.append("--extension-mime-request-handling=always-prompt-for-install")
+
+    if enable_features:
+        flags.append(f"--enable-features={','.join(dict.fromkeys(enable_features))}")
+    if disable_features:
+        flags.append(f"--disable-features={','.join(dict.fromkeys(disable_features))}")
+
+    for extra in cfg.get("extra_flags", []):
+        if isinstance(extra, str) and extra.strip():
+            flags.append(extra.strip())
+
+    return flags
+
+
+def print_help() -> None:
+    print(
+        "Usage: helium-lite [LAUNCHER_OPTION | CHROMIUM_ARGS...]\n\n"
+        "Launcher options:\n"
+        "  --settings           Open interactive settings manager\n"
+        "  --import             Run Helium profile/bookmark importer\n"
+        "  --dry-run, --print-cmd\n"
+        "                       Print resolved command and flags without launching\n"
+        "  -h, --help           Show this help message\n\n"
+        f"Config file: {CONFIG_FILE}"
+    )
+
+
+def apply_flatpak_filesystems(cmd: list[str], cfg: dict, profile_dir: Path) -> list[str]:
+    if len(cmd) >= 3 and cmd[0] == "flatpak" and cmd[1] == "run":
+        fs_flags = [
+            f"--filesystem={CONFIG_DIR}",
+            f"--filesystem={profile_dir}",
+        ]
+        if cfg.get("adblocker", True) and (ADBLOCKER_DIR / "manifest.json").is_file():
+            fs_flags.append(f"--filesystem={ADBLOCKER_DIR}")
+        if cfg.get("widevine_drm", False):
+            wv = resolve_widevine_path(cfg.get("widevine_path", "auto"))
+            if wv:
+                fs_flags.append(f"--filesystem={wv}:ro")
+        return [cmd[0], cmd[1], *dict.fromkeys(fs_flags), *cmd[2:]]
+    return cmd
+
+
+def main() -> int:
+    args = sys.argv[1:]
+    if args and args[0] in ("-h", "--help"):
+        print_help()
+        return 0
+    if args and args[0] == "--settings":
+        os.execv(str(SETTINGS_BIN), [str(SETTINGS_BIN), *args[1:]])
+    if args and args[0] == "--import":
+        os.execv(str(IMPORT_SCRIPT), [str(IMPORT_SCRIPT), *args[1:]])
+
+    dry_run = False
+    pass_args: list[str] = []
+    for arg in args:
+        if arg in ("--dry-run", "--print-cmd"):
+            dry_run = True
+        else:
+            pass_args.append(arg)
+
+    cfg = ensure_config()
+    profile_dir = Path(os.path.expanduser(cfg.get("profile_dir", str(CONFIG_DIR / "profile"))))
+    profile_dir.mkdir(parents=True, exist_ok=True)
+
+    sync_widevine_symlink(profile_dir, bool(cfg.get("widevine_drm", False)), cfg.get("widevine_path", "auto"))
+
+    flags = build_flags(cfg, profile_dir)
+
+    if dry_run:
+        try:
+            cmd = apply_flatpak_filesystems(
+                resolve_browser_command(cfg.get("browser_binary", "auto")), cfg, profile_dir
+            )
+        except FileNotFoundError as exc:
+            cmd = [f"<missing: {exc}>"]
+        print(" ".join([*cmd, *flags, *pass_args]))
+        return 0
+
+    try:
+        cmd = apply_flatpak_filesystems(
+            resolve_browser_command(cfg.get("browser_binary", "auto")), cfg, profile_dir
+        )
+    except FileNotFoundError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+
+    os.execvp(cmd[0], [*cmd, *flags, *pass_args])
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

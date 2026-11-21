@@ -1,0 +1,23 @@
+[Desktop Entry]
+Version=1.0
+Name=Helium Lite
+GenericName=Web Browser
+Comment=Low-RAM Ungoogled Chromium with tab sleeping and built-in adblocker
+Exec=/home/bo/.local/bin/helium-lite %U
+Terminal=false
+Type=Application
+Icon=chromium
+Categories=Network;WebBrowser;
+MimeType=text/html;text/xml;application/xhtml+xml;x-scheme-handler/http;x-scheme-handler/https;
+StartupNotify=true
+StartupWMClass=chromium
+Actions=settings;new-private-window;
+
+[Desktop Action settings]
+Name=Helium Lite Settings
+Exec=/home/bo/.local/bin/helium-lite-settings
+Terminal=true
+
+[Desktop Action new-private-window]
+Name=New Incognito Window
+Exec=/home/bo/.local/bin/helium-lite --incognito

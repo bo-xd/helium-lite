@@ -1,0 +1,11 @@
+{
+  "HighEfficiencyModeEnabled": true,
+  "BackgroundModeEnabled": false,
+  "MetricsReportingEnabled": false,
+  "UrlKeyedAnonymizedDataCollectionEnabled": false,
+  "SearchSuggestEnabled": false,
+  "NetworkPredictionOptions": 2,
+  "SpellCheckServiceEnabled": false,
+  "DefaultNotificationsSetting": 2,
+  "CloudReportingEnabled": false
+}

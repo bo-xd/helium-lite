@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Helium Shield</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <main class="card">
+    <header class="header">
+      <div class="brand">
+        <span class="dot" id="statusDot"></span>
+        <h1>Helium Shield</h1>
+      </div>
+      <span class="badge" id="statusBadge">Active</span>
+    </header>
+
+    <section class="site-box">
+      <div class="site-label">Current Site</div>
+      <div class="site-host" id="siteHost">—</div>
+    </section>
+
+    <section class="controls">
+      <label class="toggle-row">
+        <span>
+          <strong>Global Adblocking</strong>
+          <small>Network-level DNR filtering</small>
+        </span>
+        <input type="checkbox" id="toggleGlobal">
+      </label>
+
+      <label class="toggle-row" id="whitelistRow">
+        <span>
+          <strong>Pause on This Site</strong>
+          <small>Allow ads &amp; trackers here</small>
+        </span>
+        <input type="checkbox" id="toggleWhitelist">
+      </label>
+
+      <label class="toggle-row">
+        <span>
+          <strong>Cosmetic Filtering</strong>
+          <small>Hide ad containers in page</small>
+        </span>
+        <input type="checkbox" id="toggleCosmetic">
+      </label>
+    </section>
+
+    <footer class="footer">
+      <span class="meta" id="ruleCount">Loading rules…</span>
+      <button type="button" id="openOptions" class="link-btn">Options</button>
+    </footer>
+  </main>
+  <script src="popup.js"></script>
+</body>
+</html>

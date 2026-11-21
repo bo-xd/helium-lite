@@ -1,0 +1,180 @@
+#!/usr/bin/env python3
+"""Interactive and CLI settings manager for Helium Lite."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import sys
+from pathlib import Path
+
+CONFIG_DIR = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "helium-lite"
+CONFIG_FILE = CONFIG_DIR / "config.json"
+DEFAULT_CONFIG_FILE = Path(__file__).resolve().parent / "config.default.json"
+
+TOGGLES = [
+    ("tab_sleeping", "Tab Sleeping & Low-RAM Mode", "Aggressive Memory Saver, renderer cap, V8 heap limit, no background net/telemetry"),
+    ("hardware_accel", "Hardware Acceleration (VA-API + WebGL)", "GPU rasterization, zero-copy, VA-API video decode/encode for YouTube"),
+    ("widevine_drm", "Widevine DRM", "Enable Widevine CDM symlink for protected media (Spotify, Netflix, etc.)"),
+    ("adblocker", "Built-in Adblocker", "Load custom low-RAM MV3 adblocker extension"),
+    ("extension_support", "Extension & Web Store Support", "Allow installing extensions and .crx packages from Chrome Web Store"),
+]
+
+NUMERIC_FIELDS = [
+    ("renderer_process_limit", "Renderer Process Limit", 1, 32),
+    ("v8_max_old_space_mb", "V8 Max Heap per Tab (MB)", 128, 4096),
+]
+
+
+def load_defaults() -> dict:
+    if DEFAULT_CONFIG_FILE.is_file():
+        with DEFAULT_CONFIG_FILE.open("r", encoding="utf-8") as f:
+            return json.load(f)
+    return {
+        "browser_binary": "auto",
+        "profile_dir": str(CONFIG_DIR / "profile"),
+        "tab_sleeping": True,
+        "hardware_accel": True,
+        "widevine_drm": False,
+        "adblocker": True,
+        "extension_support": True,
+        "renderer_process_limit": 4,
+        "v8_max_old_space_mb": 512,
+        "widevine_path": "auto",
+        "extra_flags": [],
+    }
+
+
+def load_config() -> dict:
+    defaults = load_defaults()
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    if not CONFIG_FILE.is_file():
+        save_config(defaults)
+        return defaults
+    with CONFIG_FILE.open("r", encoding="utf-8") as f:
+        data = json.load(f)
+    return {**defaults, **data}
+
+
+def save_config(cfg: dict) -> None:
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    with CONFIG_FILE.open("w", encoding="utf-8") as f:
+        json.dump(cfg, f, indent=2)
+        f.write("\n")
+
+
+def parse_bool(val: str) -> bool:
+    low = val.strip().lower()
+    if low in ("1", "true", "yes", "on"):
+        return True
+    if low in ("0", "false", "no", "off"):
+        return False
+    raise ValueError(f"Invalid boolean value: {val}")
+
+
+def print_status(cfg: dict) -> None:
+    print(f"Helium Lite Settings ({CONFIG_FILE})\n")
+    for idx, (key, label, desc) in enumerate(TOGGLES, start=1):
+        state = "ON " if cfg.get(key) else "OFF"
+        print(f"  [{idx}] [{state}] {label} ({key})")
+        print(f"           {desc}")
+    print()
+    for idx, (key, label, lo, hi) in enumerate(NUMERIC_FIELDS, start=len(TOGGLES) + 1):
+        print(f"  [{idx}] [{cfg.get(key)}] {label} ({key}, {lo}-{hi})")
+    print()
+
+
+def interactive_menu(cfg: dict) -> int:
+    while True:
+        if sys.stdout.isatty():
+            os.system("clear")
+        print_status(cfg)
+        print("  [r] Reset to defaults    [q] Save & Quit")
+        try:
+            choice = input("\nSelect option to toggle/edit: ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return 0
+
+        if choice in ("q", "quit", "exit", ""):
+            save_config(cfg)
+            print(f"Saved settings to {CONFIG_FILE}")
+            return 0
+        if choice == "r":
+            cfg = load_defaults()
+            save_config(cfg)
+            continue
+        if choice.isdigit():
+            idx = int(choice)
+            if 1 <= idx <= len(TOGGLES):
+                key = TOGGLES[idx - 1][0]
+                cfg[key] = not bool(cfg.get(key))
+                save_config(cfg)
+            elif len(TOGGLES) < idx <= len(TOGGLES) + len(NUMERIC_FIELDS):
+                key, label, lo, hi = NUMERIC_FIELDS[idx - len(TOGGLES) - 1]
+                raw = input(f"Enter new value for {label} ({lo}-{hi}) [{cfg.get(key)}]: ").strip()
+                if raw:
+                    try:
+                        val = int(raw)
+                        if lo <= val <= hi:
+                            cfg[key] = val
+                            save_config(cfg)
+                    except ValueError:
+                        pass
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Manage Helium Lite settings")
+    parser.add_argument("--list", action="store_true", help="Print current settings and exit")
+    parser.add_argument("--toggle", metavar="KEY", help="Toggle a boolean setting")
+    parser.add_argument("--set", metavar="KEY=VALUE", action="append", help="Set a config key")
+    parser.add_argument("--reset", action="store_true", help="Reset config to defaults")
+    args = parser.parse_args()
+
+    if args.reset:
+        cfg = load_defaults()
+        save_config(cfg)
+        print("Reset settings to defaults.")
+        return 0
+
+    cfg = load_config()
+    modified = False
+
+    if args.toggle:
+        valid_keys = {k for k, _, _ in TOGGLES}
+        if args.toggle not in valid_keys:
+            print(f"Unknown toggle key '{args.toggle}'. Valid: {', '.join(sorted(valid_keys))}", file=sys.stderr)
+            return 1
+        cfg[args.toggle] = not bool(cfg.get(args.toggle))
+        modified = True
+
+    if args.set:
+        for item in args.set:
+            if "=" not in item:
+                print(f"Invalid --set format '{item}', expected KEY=VALUE", file=sys.stderr)
+                return 1
+            key, raw_val = item.split("=", 1)
+            if key in {k for k, _, _ in TOGGLES}:
+                cfg[key] = parse_bool(raw_val)
+            elif key in {k for k, _, _, _ in NUMERIC_FIELDS}:
+                cfg[key] = int(raw_val)
+            elif key in ("browser_binary", "profile_dir", "widevine_path"):
+                cfg[key] = raw_val
+            else:
+                print(f"Unsupported key: {key}", file=sys.stderr)
+                return 1
+            modified = True
+
+    if modified:
+        save_config(cfg)
+
+    if args.list or modified:
+        print_status(cfg)
+        return 0
+
+    return interactive_menu(cfg)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
