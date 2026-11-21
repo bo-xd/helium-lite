@@ -152,6 +152,13 @@ impl<'a> JsonParser<'a> {
         while self.pos < self.bytes.len() && self.bytes[self.pos].is_ascii_digit() {
             self.pos += 1;
         }
+        if self.bytes.get(self.pos) == Some(&b'.') {
+            self.pos += 1;
+            while self.pos < self.bytes.len() && self.bytes[self.pos].is_ascii_digit() {
+                self.pos += 1;
+            }
+            return Ok(JsonVal::Null);
+        }
         let s = std::str::from_utf8(&self.bytes[start..self.pos]).map_err(|e| e.to_string())?;
         let n = s.parse::<i64>().map_err(|e| e.to_string())?;
         Ok(JsonVal::Int(n))
@@ -337,7 +344,109 @@ fn adblocker_dir() -> PathBuf {
 }
 
 fn import_script() -> PathBuf {
+    if let Some(found) = which("kestrel-import") {
+        return found;
+    }
     repo_root().join("scripts/kestrel-import")
+}
+
+fn find_download_url(val: &JsonVal, suffix: &str) -> Option<String> {
+    match val {
+        JsonVal::Obj(entries) => {
+            for (k, v) in entries {
+                if k == "browser_download_url" {
+                    if let JsonVal::Str(url) = v {
+                        if url.ends_with(suffix) {
+                            return Some(url.clone());
+                        }
+                    }
+                } else if let Some(found) = find_download_url(v, suffix) {
+                    return Some(found);
+                }
+            }
+            None
+        }
+        JsonVal::Arr(items) => items.iter().find_map(|item| find_download_url(item, suffix)),
+        _ => None,
+    }
+}
+
+fn install_runtime() -> Result<PathBuf, String> {
+    let suffix = match env::consts::ARCH {
+        "x86_64" => "x86_64_linux.tar.xz",
+        "aarch64" => "arm64_linux.tar.xz",
+        other => return Err(format!("Unsupported architecture for portable runtime: {other}")),
+    };
+
+    println!("Fetching latest Ungoogled Chromium portable release metadata...");
+    let api_out = Command::new("curl")
+        .args([
+            "-fsSL",
+            "-H",
+            "User-Agent: kestrel-installer",
+            "https://api.github.com/repos/ungoogled-software/ungoogled-chromium-portablelinux/releases/latest",
+        ])
+        .output()
+        .map_err(|e| format!("Failed to run curl: {e}"))?;
+
+    if !api_out.status.success() {
+        return Err("Failed to query GitHub releases API".into());
+    }
+
+    let json_str = String::from_utf8(api_out.stdout).map_err(|e| e.to_string())?;
+    let parsed = JsonParser::new(&json_str).parse_val()?;
+    let url = find_download_url(&parsed, suffix)
+        .ok_or_else(|| format!("No release asset ending in '{suffix}' found"))?;
+
+    let runtime_root = home_dir().join(".local/share/kestrel/runtime");
+    let staging_dir = home_dir().join(".local/share/kestrel/runtime.staging");
+    let archive_path = home_dir().join(".local/share/kestrel/runtime.tar.xz");
+    if let Some(parent) = runtime_root.parent() {
+        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    let _ = fs::remove_dir_all(&staging_dir);
+    let _ = fs::remove_file(&archive_path);
+    fs::create_dir_all(&staging_dir).map_err(|e| e.to_string())?;
+
+    println!("Downloading {url}...");
+    let dl_status = Command::new("curl")
+        .args(["-fL", "--progress-bar", "-o"])
+        .arg(&archive_path)
+        .arg(&url)
+        .status()
+        .map_err(|e| format!("Failed to run curl: {e}"))?;
+    if !dl_status.success() {
+        let _ = fs::remove_dir_all(&staging_dir);
+        let _ = fs::remove_file(&archive_path);
+        return Err("Runtime download failed".into());
+    }
+
+    println!("Extracting runtime to {}...", runtime_root.display());
+    let tar_status = Command::new("tar")
+        .args(["--strip-components=1", "-xJf"])
+        .arg(&archive_path)
+        .arg("-C")
+        .arg(&staging_dir)
+        .status()
+        .map_err(|e| format!("Failed to run tar: {e}"))?;
+    let _ = fs::remove_file(&archive_path);
+
+    if !tar_status.success() {
+        let _ = fs::remove_dir_all(&staging_dir);
+        return Err("Failed to extract runtime archive".into());
+    }
+
+    let staged_chrome = staging_dir.join("chrome");
+    if !staged_chrome.is_file() {
+        let _ = fs::remove_dir_all(&staging_dir);
+        return Err("Extracted archive does not contain 'chrome' binary".into());
+    }
+
+    let _ = fs::remove_dir_all(&runtime_root);
+    fs::rename(&staging_dir, &runtime_root).map_err(|e| e.to_string())?;
+    let final_chrome = runtime_root.join("chrome");
+    println!("Standalone runtime installed at {}", final_chrome.display());
+    Ok(final_chrome)
 }
 
 fn which(bin: &str) -> Option<PathBuf> {
@@ -822,6 +931,8 @@ fn print_launcher_help() {
     println!(
         "Usage: kestrel [LAUNCHER_OPTION | CHROMIUM_ARGS...]\n\n\
          Launcher options:\n\
+           install-runtime        Download standalone Ungoogled Chromium runtime\n\
+           --auto-runtime         Auto-download standalone runtime if none is found\n\
            --settings, settings   Open interactive settings manager\n\
            --import               Run Kestrel profile/bookmark importer\n\
            --dry-run, --print-cmd Print resolved command and flags without launching\n\
@@ -848,6 +959,13 @@ fn main() {
                 print_launcher_help();
                 return;
             }
+            "install-runtime" | "--install-runtime" => {
+                if let Err(e) = install_runtime() {
+                    eprintln!("Error: {e}");
+                    process::exit(1);
+                }
+                return;
+            }
             "--settings" | "settings" => {
                 process::exit(run_settings(&args[2..]));
             }
@@ -861,10 +979,13 @@ fn main() {
     }
 
     let mut dry_run = false;
+    let mut auto_runtime = false;
     let mut pass_args: Vec<String> = Vec::new();
     for arg in &args[1..] {
         if arg == "--dry-run" || arg == "--print-cmd" {
             dry_run = true;
+        } else if arg == "--auto-runtime" {
+            auto_runtime = true;
         } else {
             pass_args.push(arg.clone());
         }
@@ -886,8 +1007,31 @@ fn main() {
                 println!("<missing: {e}> {}", flags.join(" "));
                 return;
             }
-            eprintln!("Error: {e}");
-            process::exit(1);
+            let should_install = if auto_runtime {
+                true
+            } else if io::IsTerminal::is_terminal(&io::stdin()) {
+                print!("No Chromium runtime found. Download standalone Kestrel runtime now? [Y/n] ");
+                let _ = io::stdout().flush();
+                let mut ans = String::new();
+                let _ = io::stdin().lock().read_line(&mut ans);
+                let trimmed = ans.trim().to_ascii_lowercase();
+                trimmed.is_empty() || trimmed == "y" || trimmed == "yes"
+            } else {
+                false
+            };
+
+            if should_install {
+                match install_runtime() {
+                    Ok(chrome_path) => vec![chrome_path.to_string_lossy().into_owned()],
+                    Err(err) => {
+                        eprintln!("Error: {err}");
+                        process::exit(1);
+                    }
+                }
+            } else {
+                eprintln!("Error: {e}\nRun `kestrel install-runtime` to install the standalone runtime.");
+                process::exit(1);
+            }
         }
     };
 

@@ -1,6 +1,11 @@
 # Kestrel
 
-**Kestrel** is an independent, low-RAM desktop browser powered by Ungoogled Chromium, with a native **Rust** launcher & settings manager, isolated profile/cache/process identity (`--class=Kestrel`), aggressive tab sleeping, VA-API hardware video acceleration, and a custom MV3 adblocker (**Kestrel Shield**).
+**Kestrel** is a **100% standalone**, independent, low-RAM desktop browser powered by Ungoogled Chromium. Cloning and running `./scripts/install.sh` gives you a complete browser with:
+- A zero-dependency native **Rust** launcher & settings manager (`kestrel`, `kestrel-settings`),
+- A self-contained portable Ungoogled Chromium runtime installed to `~/.local/share/kestrel/runtime/chrome` (no Flatpak or AUR required),
+- A bundled Manifest V3 adblocker (**Kestrel Shield**) installed to `~/.local/share/kestrel/adblocker/`,
+- Isolated profile (`~/.config/kestrel/profile`), cache (`~/.cache/kestrel`), and window class (`--class=Kestrel`),
+- Aggressive tab sleeping and VA-API hardware video acceleration.
 
 ## Directory Layout
 
@@ -15,16 +20,15 @@
 
 ## Quick Start
 
-1. Ensure a Chromium runtime is available:
-   - Local standalone runtime at `~/.local/share/kestrel/runtime/chrome`, OR
-   - Native `ungoogled-chromium` (`yay -S ungoogled-chromium-bin`), OR
-   - User Flatpak (`flatpak install flathub io.github.ungoogled_software.ungoogled_chromium`). When using Flatpak, `kestrel` automatically forwards `--filesystem` flags for `~/.config/kestrel`, `~/.cache/kestrel`, `adblocker/`, and `WidevineCdm`.
-2. Build & install Kestrel (requires `rustc`/`cargo`):
+1. Build & install Kestrel (requires `rustc`/`cargo`, `curl`, `tar`, `xz`):
    ```bash
    ./scripts/install.sh
-   # Or also register Kestrel as your default web browser:
+   # Or register Kestrel as your default web browser too:
    ./scripts/install.sh --set-default
+   # Or skip downloading the standalone runtime if using system/Flatpak Ungoogled Chromium:
+   ./scripts/install.sh --system-browser
    ```
+   By default, `install.sh` compiles the Rust launcher, copies Kestrel Shield to `~/.local/share/kestrel/adblocker/`, and runs `kestrel install-runtime` to fetch the latest portable Ungoogled Chromium runtime into `~/.local/share/kestrel/runtime/chrome`.
 3. (Optional) Import bookmarks from an existing Chromium/Helium profile:
    ```bash
    kestrel-import
@@ -66,6 +70,8 @@ kestrel-settings --set renderer_process_limit=6 --set v8_max_old_space_mb=768
 
 ### Launcher Options
 
+- `kestrel install-runtime` — Download/update the standalone portable Ungoogled Chromium runtime to `~/.local/share/kestrel/runtime/`.
+- `kestrel --auto-runtime` — Automatically download the standalone runtime on launch if none is found.
 - `kestrel --dry-run` (or `--print-cmd`) — Print the resolved browser command and flags without launching.
 - `kestrel settings` / `kestrel --settings` — Open `kestrel-settings`.
 - `kestrel --import` — Run `kestrel-import`.
