@@ -16,7 +16,11 @@ FETCH_ONLY=0
 RUNTIME_DIR="${HOME}/.local/share/kestrel/runtime"
 
 REQUIRED_CMDS=(
-  ninja gn clang lld llvm-ar node gperf bison flex quilt git curl tar xz
+  ninja gn clang lld llvm-ar node tsc esbuild bindgen java gperf bison flex quilt git curl tar xz
+)
+
+REQUIRED_ARCH_PKGS=(
+  compiler-rt rust-src
 )
 
 PACMAN_PKGS=(
@@ -57,6 +61,14 @@ check_dependencies() {
       missing+=("${cmd}")
     fi
   done
+
+  if command -v pacman >/dev/null 2>&1; then
+    for pkg in "${REQUIRED_ARCH_PKGS[@]}"; do
+      if ! pacman -Q "${pkg}" >/dev/null 2>&1; then
+        missing+=("${pkg}")
+      fi
+    done
+  fi
 
   if [[ ${#missing[@]} -eq 0 ]]; then
     echo "All required build tools are installed."
