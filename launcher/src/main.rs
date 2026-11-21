@@ -13,6 +13,7 @@ struct Config {
     browser_binary: String,
     profile_dir: String,
     cache_dir: String,
+    search_engine: String,
     tab_sleeping: bool,
     hardware_accel: bool,
     widevine_drm: bool,
@@ -30,6 +31,7 @@ impl Default for Config {
             browser_binary: "auto".to_string(),
             profile_dir: "~/.config/kestrel/profile".to_string(),
             cache_dir: "~/.cache/kestrel".to_string(),
+            search_engine: "duckduckgo".to_string(),
             tab_sleeping: true,
             hardware_accel: true,
             widevine_drm: false,
@@ -240,6 +242,7 @@ impl Config {
                 ("browser_binary", JsonVal::Str(s)) => cfg.browser_binary = s,
                 ("profile_dir", JsonVal::Str(s)) => cfg.profile_dir = s,
                 ("cache_dir", JsonVal::Str(s)) => cfg.cache_dir = s,
+                ("search_engine", JsonVal::Str(s)) => cfg.search_engine = s,
                 ("tab_sleeping", JsonVal::Bool(b)) => cfg.tab_sleeping = b,
                 ("hardware_accel", JsonVal::Bool(b)) => cfg.hardware_accel = b,
                 ("widevine_drm", JsonVal::Bool(b)) => cfg.widevine_drm = b,
@@ -268,10 +271,11 @@ impl Config {
             .collect::<Vec<_>>()
             .join(", ");
         format!(
-            "{{\n  \"browser_binary\": {},\n  \"profile_dir\": {},\n  \"cache_dir\": {},\n  \"tab_sleeping\": {},\n  \"hardware_accel\": {},\n  \"widevine_drm\": {},\n  \"adblocker\": {},\n  \"extension_support\": {},\n  \"renderer_process_limit\": {},\n  \"v8_max_old_space_mb\": {},\n  \"widevine_path\": {},\n  \"extra_flags\": [{}]\n}}\n",
+            "{{\n  \"browser_binary\": {},\n  \"profile_dir\": {},\n  \"cache_dir\": {},\n  \"search_engine\": {},\n  \"tab_sleeping\": {},\n  \"hardware_accel\": {},\n  \"widevine_drm\": {},\n  \"adblocker\": {},\n  \"extension_support\": {},\n  \"renderer_process_limit\": {},\n  \"v8_max_old_space_mb\": {},\n  \"widevine_path\": {},\n  \"extra_flags\": [{}]\n}}\n",
             json_escape(&self.browser_binary),
             json_escape(&self.profile_dir),
             json_escape(&self.cache_dir),
+            json_escape(&self.search_engine),
             self.tab_sleeping,
             self.hardware_accel,
             self.widevine_drm,
@@ -545,6 +549,124 @@ fn resolve_widevine_path(configured: &str) -> Option<PathBuf> {
     candidates.into_iter().find(|p| p.exists())
 }
 
+struct SearchEngineSpec {
+    short_name: &'static str,
+    keyword: &'static str,
+    favicon_url: &'static str,
+    url: &'static str,
+    suggest_url: &'static str,
+    prepopulate_id: i64,
+}
+
+fn search_engine_spec(name: &str) -> Option<SearchEngineSpec> {
+    match name.trim().to_ascii_lowercase().as_str() {
+        "duckduckgo" | "ddg" => Some(SearchEngineSpec {
+            short_name: "DuckDuckGo",
+            keyword: "duckduckgo.com",
+            favicon_url: "https://duckduckgo.com/favicon.ico",
+            url: "https://duckduckgo.com/?q={searchTerms}",
+            suggest_url: "https://duckduckgo.com/ac/?q={searchTerms}&type=list",
+            prepopulate_id: 92,
+        }),
+        "brave" => Some(SearchEngineSpec {
+            short_name: "Brave",
+            keyword: "search.brave.com",
+            favicon_url: "https://cdn.search.brave.com/serp/v2/_app/immutable/assets/favicon.ico",
+            url: "https://search.brave.com/search?q={searchTerms}",
+            suggest_url: "https://search.brave.com/api/suggest?q={searchTerms}",
+            prepopulate_id: 109,
+        }),
+        "startpage" => Some(SearchEngineSpec {
+            short_name: "Startpage",
+            keyword: "startpage.com",
+            favicon_url: "https://www.startpage.com/sp/cdn/favicons/favicon-16x16-gradient.png",
+            url: "https://www.startpage.com/sp/search?query={searchTerms}",
+            suggest_url: "https://www.startpage.com/osuggestions?q={searchTerms}",
+            prepopulate_id: 0,
+        }),
+        "google" => Some(SearchEngineSpec {
+            short_name: "Google",
+            keyword: "google.com",
+            favicon_url: "https://www.google.com/favicon.ico",
+            url: "https://www.google.com/search?q={searchTerms}",
+            suggest_url: "https://www.google.com/complete/search?client=chrome&q={searchTerms}",
+            prepopulate_id: 1,
+        }),
+        _ => None,
+    }
+}
+
+fn sql_escape(s: &str) -> String {
+    s.replace('\'', "''")
+}
+
+fn ensure_search_engine(profile_dir: &Path, engine: &str, force: bool, cmd_hint: Option<&[String]>) {
+    let Some(spec) = search_engine_spec(engine) else {
+        return;
+    };
+    if which("sqlite3").is_none() {
+        return;
+    }
+    if profile_dir.join("SingletonLock").exists() {
+        return;
+    }
+
+    let web_data = profile_dir.join("Default/Web Data");
+    if !web_data.is_file() {
+        if let Some(cmd) = cmd_hint {
+            let _ = Command::new(&cmd[0])
+                .args(&cmd[1..])
+                .args([
+                    "--headless",
+                    "--no-sandbox",
+                    &format!("--user-data-dir={}", profile_dir.display()),
+                    "--dump-dom",
+                    "about:blank",
+                ])
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status();
+        }
+    }
+
+    if !web_data.is_file() {
+        return;
+    }
+
+    if !force {
+        let check = Command::new("sqlite3")
+            .arg(&web_data)
+            .arg("SELECT k.short_name, k.url, m.value FROM keywords k LEFT JOIN meta m ON m.key='Default Search Provider ID' WHERE k.id=2;")
+            .output();
+        if let Ok(out) = check {
+            let s = String::from_utf8_lossy(&out.stdout);
+            let trimmed = s.trim();
+            let is_nosearch = trimmed.contains("No Search") || trimmed.contains("http://{searchTerms}");
+            let has_meta = trimmed.ends_with('|') == false && !trimmed.is_empty();
+            if !is_nosearch && has_meta {
+                return;
+            }
+        }
+    }
+
+    let sql = format!(
+        "UPDATE keywords SET short_name='{}', keyword='{}', favicon_url='{}', url='{}', suggest_url='{}', prepopulate_id={} WHERE id=2; \
+         INSERT OR REPLACE INTO meta(key, value) VALUES ('Default Search Provider ID', '2');",
+        sql_escape(spec.short_name),
+        sql_escape(spec.keyword),
+        sql_escape(spec.favicon_url),
+        sql_escape(spec.url),
+        sql_escape(spec.suggest_url),
+        spec.prepopulate_id
+    );
+    let _ = Command::new("sqlite3")
+        .arg(&web_data)
+        .arg(sql)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
+}
+
 fn sync_widevine_symlink(profile_dir: &Path, enabled: bool, widevine_cfg: &str) {
     let target_link = profile_dir.join("WidevineCdm");
     if enabled {
@@ -567,7 +689,7 @@ fn build_flags(cfg: &Config, profile_dir: &Path, cache_dir: &Path) -> Vec<String
         "--no-default-browser-check".to_string(),
     ];
 
-    let mut enable_features: Vec<&str> = Vec::new();
+    let mut enable_features: Vec<&str> = vec!["HttpsUpgrades"];
     let mut disable_features: Vec<&str> = Vec::new();
 
     if cfg.tab_sleeping {
@@ -732,6 +854,7 @@ fn print_settings_status(cfg: &Config) {
     println!();
     println!("  [6] [{}] Renderer Process Limit (renderer_process_limit, 1-32)", cfg.renderer_process_limit);
     println!("  [7] [{}] V8 Max Heap per Tab (MB) (v8_max_old_space_mb, 128-4096)", cfg.v8_max_old_space_mb);
+    println!("  [8] [{}] Default Search Engine (duckduckgo | brave | startpage | google)", cfg.search_engine);
     println!();
 }
 
@@ -798,6 +921,19 @@ fn run_settings_interactive(mut cfg: Config) -> i32 {
                     }
                 }
             }
+            "8" => {
+                print!("Enter search engine (duckduckgo, brave, startpage, google) [{}]: ", cfg.search_engine);
+                let _ = stdout.flush();
+                let mut raw = String::new();
+                if stdin.lock().read_line(&mut raw).is_ok() {
+                    let val = raw.trim().to_ascii_lowercase();
+                    if search_engine_spec(&val).is_some() {
+                        cfg.search_engine = val;
+                        let _ = save_config(&cfg);
+                        ensure_search_engine(&expand_tilde(&cfg.profile_dir), &cfg.search_engine, true, None);
+                    }
+                }
+            }
             _ => {}
         }
     }
@@ -813,9 +949,9 @@ fn run_settings(args: &[String]) -> i32 {
     while i < args.len() {
         match args[i].as_str() {
             "-h" | "--help" => {
-                println!(
+                    println!(
                     "Usage: kestrel-settings [--list] [--toggle KEY] [--set KEY=VALUE] [--reset]\n\n\
-                     Keys: tab_sleeping, hardware_accel, widevine_drm, adblocker, extension_support,\n\
+                     Keys: search_engine, tab_sleeping, hardware_accel, widevine_drm, adblocker, extension_support,\n\
                            renderer_process_limit, v8_max_old_space_mb, browser_binary, profile_dir, cache_dir, widevine_path"
                 );
                 return 0;
@@ -900,6 +1036,15 @@ fn run_settings(args: &[String]) -> i32 {
                     return 1;
                 }
             },
+            "search_engine" => {
+                let low = val.trim().to_ascii_lowercase();
+                if search_engine_spec(&low).is_none() {
+                    eprintln!("Unsupported search_engine '{val}'. Choose: duckduckgo, brave, startpage, google");
+                    return 1;
+                }
+                cfg.search_engine = low;
+                ensure_search_engine(&expand_tilde(&cfg.profile_dir), &cfg.search_engine, true, None);
+            }
             "browser_binary" => cfg.browser_binary = val.to_string(),
             "profile_dir" => cfg.profile_dir = val.to_string(),
             "cache_dir" => cfg.cache_dir = val.to_string(),
@@ -1042,6 +1187,8 @@ fn main() {
         println!("{}", all.join(" "));
         return;
     }
+
+    ensure_search_engine(&profile_dir, &cfg.search_engine, false, Some(&cmd));
 
     let err = Command::new(&cmd[0])
         .args(&cmd[1..])

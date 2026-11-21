@@ -62,6 +62,7 @@ kestrel-settings --set renderer_process_limit=6 --set v8_max_old_space_mb=768
 
 | Key | Default | Effect |
 | --- | --- | --- |
+| `search_engine` | `"duckduckgo"` | Default omnibox search engine (`duckduckgo`, `brave`, `startpage`, `google`), auto-configured in `Web Data` so address-bar queries never fall back to `No Search` (`http://<query>/`). |
 | `tab_sleeping` | `true` | Enables Memory Saver (`HighEfficiencyModeAvailable`, `MemorySaverModeAvailable`), caps renderer processes (`--renderer-process-limit`), caps V8 heap (`--js-flags=--max-old-space-size`), and disables background networking, telemetry, prefetching, and speculation rules. |
 | `hardware_accel` | `true` | Enables GPU rasterization, zero-copy, Wayland/X11 auto Ozone platform, WebGL, and VA-API hardware video decoding/encoding (`VaapiVideoDecoder`, `VaapiVideoEncoder`, `VaapiVideoDecodeLinuxGL`). |
 | `widevine_drm` | `false` | Symlinks `WidevineCdm` (from `~/.local/share/kestrel/runtime/WidevineCdm`, `/usr/lib/chromium/WidevineCdm`, `~/.config/sh.cider.genten/WidevineCdm`, or Helium) into the Kestrel profile when enabled, and removes the symlink when disabled. |

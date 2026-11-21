@@ -2,6 +2,7 @@
   "browser_binary": "auto",
   "profile_dir": "~/.config/kestrel/profile",
   "cache_dir": "~/.cache/kestrel",
+  "search_engine": "duckduckgo",
   "tab_sleeping": true,
   "hardware_accel": true,
   "widevine_drm": false,
