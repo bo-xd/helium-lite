@@ -1,0 +1,51 @@
+# Kestrel Custom Chromium 158.0.8127.36 GN Build Configuration (Arch Linux)
+
+# Toolchain & Build Optimization
+custom_toolchain="//build/toolchain/linux/unbundle:default"
+host_toolchain="//build/toolchain/linux/unbundle:default"
+is_official_build=true
+use_thin_lto=true
+chrome_pgo_phase=0
+clang_base_path="/usr"
+clang_use_chrome_plugins=false
+use_clang_modules=false
+use_custom_libcxx=true
+use_sysroot=false
+use_system_libffi=true
+treat_warnings_as_errors=false
+fatal_linker_warnings=false
+
+# Low-RAM & Stripped Bloat
+symbol_level=0
+blink_symbol_level=0
+enable_nacl=false
+enable_reporting=false
+enable_hangout_services_extension=false
+enable_mdns=false
+enable_remoting=false
+enable_service_discovery=false
+exclude_unwind_tables=true
+blink_enable_generated_code_formatting=false
+disable_fieldtrial_testing_config=true
+safe_browsing_mode=0
+use_official_google_api_keys=false
+use_unofficial_version_number=false
+google_api_key=""
+google_default_client_id=""
+google_default_client_secret=""
+v8_drumbrake_bounds_checks=true
+
+# Media, Hardware Video Acceleration & DRM
+use_vaapi=true
+proprietary_codecs=true
+ffmpeg_branding="Chrome"
+enable_widevine=true
+enable_platform_hevc=true
+enable_hevc_parser_and_hw_decoder=true
+rtc_use_pipewire=true
+link_pulseaudio=true
+
+# Linux Desktop Integration
+use_qt5=false
+use_qt6=true
+moc_qt6_path="/usr/lib/qt6"

@@ -1,4 +1,5 @@
 target/
+kestrel-build/
 adblocker/scripts/build_filters
 __pycache__/
 *.py[cod]

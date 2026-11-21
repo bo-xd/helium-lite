@@ -77,6 +77,20 @@ kestrel-settings --set renderer_process_limit=6 --set v8_max_old_space_mb=768
 - `kestrel settings` / `kestrel --settings` — Open `kestrel-settings`.
 - `kestrel --import` — Run `kestrel-import`.
 
+## Custom Source Build (Optional)
+
+To compile your own stripped-down, low-RAM **Ungoogled Chromium `158.0.8127.36-1`** runtime from source on Arch Linux (with `browser/args.gn` and any custom patches in `browser/patches/*.patch`):
+
+1. Check required build dependencies:
+   ```bash
+   ./scripts/build-browser.sh --check-deps
+   ```
+2. Fetch, patch, compile (requires ~100GB+ under `/home/bo/Projects/kestrel-build`), and install into `~/.local/share/kestrel/runtime/`:
+   ```bash
+   ./scripts/build-browser.sh --jobs 10
+   ```
+   Use `--fetch-only` to unpack and patch the source tree without compiling.
+
 ## Managed Policy (Optional)
 
 To enforce Memory Saver and disable background mode and reporting at the policy level:
