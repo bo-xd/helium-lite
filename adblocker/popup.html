@@ -13,43 +13,78 @@
         <span class="dot" id="statusDot"></span>
         <h1>Kestrel Shield</h1>
       </div>
-      <span class="badge" id="statusBadge">Active</span>
+      <label class="master-switch" title="Toggle Shields for this site">
+        <input type="checkbox" id="toggleSiteShield">
+      </label>
     </header>
 
-    <section class="site-box">
-      <div class="site-label">Current Site</div>
-      <div class="site-host" id="siteHost">—</div>
+    <section class="hero">
+      <div class="hero-left">
+        <div class="site-host" id="siteHost">—</div>
+        <div class="site-state" id="statusBadge">Shields UP</div>
+      </div>
+      <div class="hero-count">
+        <span class="count-num" id="blockedCount">0</span>
+        <span class="count-label">Blocked</span>
+      </div>
+    </section>
+
+    <section class="segment-group" id="levelGroup">
+      <span class="segment-label">Blocking Level</span>
+      <div class="segmented">
+        <button type="button" class="seg-btn active" data-level="standard">Standard</button>
+        <button type="button" class="seg-btn" data-level="aggressive">Aggressive</button>
+      </div>
     </section>
 
     <section class="controls">
-      <label class="toggle-row">
+      <label class="toggle-row" id="scriptsRow">
         <span>
-          <strong>Global Adblocking</strong>
-          <small>Network-level DNR filtering</small>
+          <strong>Block Scripts</strong>
+          <small>Disable JS on this site</small>
         </span>
-        <input type="checkbox" id="toggleGlobal">
+        <input type="checkbox" id="toggleScripts">
       </label>
 
-      <label class="toggle-row" id="whitelistRow">
+      <label class="toggle-row">
         <span>
-          <strong>Pause on This Site</strong>
-          <small>Allow ads &amp; trackers here</small>
+          <strong>Anti-Fingerprinting</strong>
+          <small>Canvas/audio jitter &amp; beacon block</small>
         </span>
-        <input type="checkbox" id="toggleWhitelist">
+        <input type="checkbox" id="toggleFingerprint">
       </label>
 
       <label class="toggle-row">
         <span>
           <strong>Cosmetic Filtering</strong>
-          <small>Hide ad containers in page</small>
+          <small>Hide ad &amp; sponsored containers</small>
         </span>
         <input type="checkbox" id="toggleCosmetic">
+      </label>
+
+      <label class="toggle-row">
+        <span>
+          <strong>Annoyances &amp; Cookies</strong>
+          <small>Block cookie banners &amp; popups</small>
+        </span>
+        <input type="checkbox" id="toggleAnnoyances">
+      </label>
+
+      <label class="toggle-row">
+        <span>
+          <strong>Strip Tracking Params</strong>
+          <small>Remove utm_*, fbclid, gclid</small>
+        </span>
+        <input type="checkbox" id="toggleTrackingParams">
       </label>
     </section>
 
     <footer class="footer">
-      <span class="meta" id="ruleCount">Loading rules…</span>
-      <button type="button" id="openOptions" class="link-btn">Options</button>
+      <span class="meta" id="ruleCount">25,576 DNR rules</span>
+      <div class="footer-actions">
+        <button type="button" id="toggleGlobalBtn" class="link-btn subtle">Global: ON</button>
+        <button type="button" id="openOptions" class="link-btn">Options</button>
+      </div>
     </footer>
   </main>
   <script src="popup.js"></script>

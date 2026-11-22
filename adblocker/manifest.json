@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Kestrel Shield",
-  "version": "1.0.0",
-  "description": "Ultra-low-RAM Manifest V3 ad and tracker blocker for Ungoogled Chromium using declarativeNetRequest.",
+  "version": "2.0.0",
+  "description": "Ultra-low-RAM Manifest V3 ad, tracker, malware, and fingerprint blocker for Kestrel.",
   "permissions": [
     "declarativeNetRequest",
     "storage",
@@ -11,9 +11,29 @@
   "declarative_net_request": {
     "rule_resources": [
       {
-        "id": "ruleset_1",
+        "id": "ads",
         "enabled": true,
-        "path": "rules/ruleset.json"
+        "path": "rules/ads.json"
+      },
+      {
+        "id": "privacy",
+        "enabled": true,
+        "path": "rules/privacy.json"
+      },
+      {
+        "id": "malware",
+        "enabled": true,
+        "path": "rules/malware.json"
+      },
+      {
+        "id": "annoyances",
+        "enabled": true,
+        "path": "rules/annoyances.json"
+      },
+      {
+        "id": "tracking_params",
+        "enabled": true,
+        "path": "rules/tracking_params.json"
       }
     ]
   },
@@ -21,6 +41,13 @@
     "service_worker": "background.js"
   },
   "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["anti_fingerprint.js"],
+      "run_at": "document_start",
+      "all_frames": true,
+      "world": "MAIN"
+    },
     {
       "matches": ["<all_urls>"],
       "js": ["content.js"],

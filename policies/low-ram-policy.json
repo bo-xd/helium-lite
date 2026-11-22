@@ -7,5 +7,9 @@
   "NetworkPredictionOptions": 2,
   "SpellCheckServiceEnabled": false,
   "DefaultNotificationsSetting": 2,
-  "CloudReportingEnabled": false
+  "CloudReportingEnabled": false,
+  "SitePerProcess": true,
+  "BlockThirdPartyCookies": true,
+  "DnsOverHttpsMode": "automatic",
+  "WebRtcIPHandling": "disable_non_proxied_udp"
 }

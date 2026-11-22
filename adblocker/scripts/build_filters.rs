@@ -4,17 +4,98 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-const LIST_URLS: &[(&str, &str)] = &[
+const ADS_URLS: &[(&str, &str)] = &[
     ("easylist", "https://easylist.to/easylist/easylist.txt"),
-    ("easyprivacy", "https://easylist.to/easylist/easyprivacy.txt"),
     (
         "peterlowe",
         "https://pgl.yoyo.org/adservers/serverlist.php?hostformat=hosts&showintro=0&mimetype=plaintext",
     ),
 ];
 
-const RESOURCE_TYPES_JSON: &str =
-    r#"["script","image","xmlhttprequest","sub_frame","ping","media","font","stylesheet","other"]"#;
+const PRIVACY_URLS: &[(&str, &str)] =
+    &[("easyprivacy", "https://easylist.to/easylist/easyprivacy.txt")];
+
+const MALWARE_URLS: &[(&str, &str)] = &[
+    (
+        "urlhaus",
+        "https://malware-filter.gitlab.io/malware-filter/urlhaus-filter-online.txt",
+    ),
+    (
+        "ublock-badware",
+        "https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/badware.txt",
+    ),
+];
+
+const ANNOYANCES_URLS: &[(&str, &str)] = &[
+    (
+        "fanboy-annoyance",
+        "https://easylist.to/easylist/fanboy-annoyance.txt",
+    ),
+    (
+        "fanboy-cookie",
+        "https://secure.fanboy.co.nz/fanboy-cookiemonster.txt",
+    ),
+];
+
+const DEFAULT_RESOURCE_TYPES: &[&str] = &[
+    "script",
+    "image",
+    "xmlhttprequest",
+    "sub_frame",
+    "ping",
+    "media",
+    "font",
+    "stylesheet",
+    "other",
+];
+
+const MALWARE_RESOURCE_TYPES: &[&str] = &[
+    "main_frame",
+    "sub_frame",
+    "script",
+    "image",
+    "xmlhttprequest",
+    "ping",
+    "media",
+    "font",
+    "stylesheet",
+    "other",
+];
+
+const TRACKING_PARAMS: &[&str] = &[
+    "utm_source",
+    "utm_medium",
+    "utm_campaign",
+    "utm_term",
+    "utm_content",
+    "utm_id",
+    "utm_name",
+    "utm_reader",
+    "utm_viz_id",
+    "utm_pubreferrer",
+    "fbclid",
+    "gclid",
+    "dclid",
+    "gbraid",
+    "wbraid",
+    "mc_cid",
+    "mc_eid",
+    "igshid",
+    "si",
+    "_hsenc",
+    "_hsmi",
+    "yclid",
+    "msclkid",
+    "wickedid",
+    "twclid",
+    "ttclid",
+    "ref_src",
+    "s_kwcid",
+    "oly_anon_id",
+    "oly_enc_id",
+    "vero_id",
+    "mkt_tok",
+];
 
 const SAFE_EXCLUSIONS: &[&str] = &[
     "bing.com",
@@ -24,22 +105,17 @@ const SAFE_EXCLUSIONS: &[&str] = &[
     "amazon.com",
     "github.com",
     "cloudflare.com",
+    "youtube.com",
+    "wikipedia.org",
 ];
 
-const BUILTIN_DOMAINS: &[&str] = &[
+const BUILTIN_ADS: &[&str] = &[
     "doubleclick.net",
     "googlesyndication.com",
     "googleadservices.com",
-    "google-analytics.com",
-    "googletagmanager.com",
-    "googletagservices.com",
     "adservice.google.com",
     "pagead2.googlesyndication.com",
     "tpc.googlesyndication.com",
-    "analytics.google.com",
-    "connect.facebook.net",
-    "pixel.facebook.com",
-    "an.facebook.com",
     "amazon-adsystem.com",
     "aax.amazon-adsystem.com",
     "fls-na.amazon-adsystem.com",
@@ -59,6 +135,48 @@ const BUILTIN_DOMAINS: &[&str] = &[
     "trc.taboola.com",
     "outbrain.com",
     "widgets.outbrain.com",
+    "adform.net",
+    "adsrvr.org",
+    "bidswitch.net",
+    "media.net",
+    "sharethrough.com",
+    "triplelift.com",
+    "smartadserver.com",
+    "indexww.com",
+    "33across.com",
+    "gumgum.com",
+    "teads.tv",
+    "revcontent.com",
+    "mgid.com",
+    "adroll.com",
+    "serving-sys.com",
+    "flashtalking.com",
+    "sizmek.com",
+    "advertising.com",
+    "yieldmo.com",
+    "spotxchange.com",
+    "springserve.com",
+    "innovid.com",
+    "ads.linkedin.com",
+    "ads-twitter.com",
+    "ads.tiktok.com",
+    "ads.reddit.com",
+    "popads.net",
+    "popcash.net",
+    "propellerads.com",
+    "exoclick.com",
+    "juicyads.com",
+    "trafficjunky.net",
+];
+
+const BUILTIN_PRIVACY: &[&str] = &[
+    "google-analytics.com",
+    "googletagmanager.com",
+    "googletagservices.com",
+    "analytics.google.com",
+    "connect.facebook.net",
+    "pixel.facebook.com",
+    "an.facebook.com",
     "scorecardresearch.com",
     "sb.scorecardresearch.com",
     "quantserve.com",
@@ -74,162 +192,99 @@ const BUILTIN_DOMAINS: &[&str] = &[
     "cdn.segment.com",
     "amplitude.com",
     "api.amplitude.com",
-    "api2.amplitude.com",
     "sentry.io",
     "bugsnag.com",
-    "notify.bugsnag.com",
     "fullstory.com",
-    "rs.fullstory.com",
     "mouseflow.com",
     "crazyegg.com",
-    "script.crazyegg.com",
     "optimizely.com",
-    "cdn.optimizely.com",
-    "adform.net",
-    "track.adform.net",
-    "adsrvr.org",
-    "match.adsrvr.org",
-    "bidswitch.net",
     "tapad.com",
-    "pixel.tapad.com",
     "rlcdn.com",
     "bluekai.com",
-    "tags.bluekai.com",
     "demdex.net",
-    "dpm.demdex.net",
     "omtrdc.net",
     "2o7.net",
     "krxd.net",
     "exelator.com",
     "agkn.com",
     "mathtag.com",
-    "pixel.mathtag.com",
-    "media.net",
-    "contextual.media.net",
-    "sharethrough.com",
-    "triplelift.com",
-    "eb2.3lift.com",
-    "smartadserver.com",
-    "indexww.com",
-    "33across.com",
-    "gumgum.com",
-    "teads.tv",
-    "a.teads.tv",
-    "zemanta.com",
-    "revcontent.com",
-    "mgid.com",
-    "adroll.com",
-    "d.adroll.com",
-    "serving-sys.com",
-    "bs.serving-sys.com",
-    "flashtalking.com",
-    "sizmek.com",
-    "adtech.de",
-    "advertising.com",
-    "atdmt.com",
-    "yieldmo.com",
-    "spotxchange.com",
-    "springserve.com",
-    "innovid.com",
     "moatads.com",
-    "z.moatads.com",
     "doubleverify.com",
-    "tps.doubleverify.com",
     "adsafeprotected.com",
-    "pixel.adsafeprotected.com",
     "branch.io",
-    "api.branch.io",
-    "app.link",
     "adjust.com",
-    "app.adjust.com",
     "appsflyer.com",
-    "t.appsflyer.com",
     "kochava.com",
     "singular.net",
     "braze.com",
     "onesignal.com",
     "intercom.io",
-    "widget.intercom.io",
     "drift.com",
-    "js.driftt.com",
-    "hubspot.com",
     "js.hs-analytics.net",
     "js.hs-scripts.com",
     "marketo.net",
-    "munchkin.marketo.net",
     "pardot.com",
-    "pi.pardot.com",
     "bat.bing.com",
-    "ads.linkedin.com",
     "px.ads.linkedin.com",
     "snap.licdn.com",
-    "ads-twitter.com",
-    "static.ads-twitter.com",
     "analytics.twitter.com",
     "sc-static.net",
     "tr.snapchat.com",
     "analytics.tiktok.com",
-    "business-api.tiktok.com",
-    "ads.tiktok.com",
     "ct.pinterest.com",
-    "log.pinterest.com",
-    "ads.reddit.com",
     "alb.reddit.com",
     "events.redditmedia.com",
     "clarity.ms",
-    "www.clarity.ms",
     "newrelic.com",
     "bam.nr-data.net",
-    "js-agent.newrelic.com",
     "heapanalytics.com",
-    "cdn.heapanalytics.com",
     "logrocket.com",
-    "cdn.logrocket.io",
     "pendo.io",
-    "cdn.pendo.io",
     "kissmetrics.com",
-    "trk.kissmetrics.com",
     "statcounter.com",
-    "c.statcounter.com",
     "clicky.com",
-    "in.getclicky.com",
     "liveintent.com",
     "liadm.com",
-    "idx.liadm.com",
     "id5-sync.com",
     "crwdcntrl.net",
-    "b.crwdcntrl.net",
     "lotame.com",
     "adobedtm.com",
-    "assets.adobedtm.com",
     "tiqcdn.com",
-    "tags.tiqcdn.com",
     "ensighten.com",
-    "nexus.ensighten.com",
     "bounceexchange.com",
-    "tag.bounceexchange.com",
     "klaviyo.com",
-    "static.klaviyo.com",
     "attentivemobile.com",
-    "cdn.attn.tv",
-    "yotpo.com",
-    "staticw2.yotpo.com",
-    "trustpilot.com",
-    "widget.trustpilot.com",
-    "popads.net",
-    "popcash.net",
-    "propellerads.com",
-    "exoclick.com",
-    "juicyads.com",
-    "trafficjunky.net",
 ];
+
+const BUILTIN_MALWARE: &[&str] = &[
+    "coinhive.com",
+    "coin-hive.com",
+    "authedmine.com",
+    "cryptoloot.pro",
+    "webminepool.com",
+];
+
+const BUILTIN_ANNOYANCES: &[&str] = &[
+    "cdn.cookielaw.org",
+    "geolocation.onetrust.com",
+    "consent.cookiebot.com",
+    "consent.trustarc.com",
+    "app.termly.io",
+    "cdn.privacy-mgmt.com",
+];
+
+#[derive(Clone, Eq, PartialEq, Hash)]
+struct ParsedRule {
+    url_filter: String,
+    domain_type: Option<&'static str>,
+    resource_types: Vec<&'static str>,
+}
 
 fn is_valid_domain(s: &str) -> bool {
     if s.len() < 4 || s.starts_with('.') || s.ends_with('.') || !s.contains('.') {
         return false;
     }
-    let parts: Vec<&str> = s.split('.').collect();
-    let tld = parts.last().copied().unwrap_or("");
+    let tld = s.rsplit('.').next().unwrap_or("");
     if tld.len() < 2 || !tld.chars().all(|c| c.is_ascii_alphabetic()) {
         return false;
     }
@@ -237,63 +292,165 @@ fn is_valid_domain(s: &str) -> bool {
         .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-')
 }
 
-fn parse_abp_line(line: &str) -> Option<(String, bool)> {
-    let rest = line.strip_prefix("||")?;
-    let caret_pos = rest.find('^')?;
-    let domain = rest[..caret_pos].to_ascii_lowercase();
-    if !is_valid_domain(&domain) {
-        return None;
+fn map_resource_type(opt: &str) -> Option<&'static str> {
+    match opt {
+        "script" => Some("script"),
+        "image" => Some("image"),
+        "xmlhttprequest" | "xhr" => Some("xmlhttprequest"),
+        "subdocument" | "sub_frame" => Some("sub_frame"),
+        "stylesheet" | "css" => Some("stylesheet"),
+        "font" => Some("font"),
+        "media" => Some("media"),
+        "ping" | "beacon" => Some("ping"),
+        "websocket" => Some("websocket"),
+        "other" => Some("other"),
+        _ => None,
     }
-    let after = &rest[caret_pos + 1..];
-    if after.is_empty() {
-        return Some((domain, false));
-    }
-    let opts_str = after.strip_prefix('$')?;
-    if opts_str.chars().any(char::is_whitespace) {
-        return None;
-    }
-    let mut third_party = false;
-    for opt in opts_str.split(',') {
-        let o = opt.to_ascii_lowercase();
-        if o.starts_with('~')
-            || matches!(o.as_str(), "elemhide" | "generichide" | "document" | "popup")
-        {
-            return None;
-        }
-        if o == "third-party" || o == "3p" {
-            third_party = true;
-        }
-    }
-    Some((domain, third_party))
 }
 
-fn parse_hosts_line(line: &str) -> Option<String> {
+fn parse_abp_line(line: &str, default_types: &[&'static str]) -> Option<ParsedRule> {
+    if line.starts_with("@@")
+        || line.contains("##")
+        || line.contains("#@#")
+        || line.contains("#?#")
+        || line.contains("$@$")
+        || !line.is_ascii()
+    {
+        return None;
+    }
+
+    let (pattern_raw, opts_raw) = match line.rfind('$') {
+        Some(pos) if pos > 0 => (&line[..pos], Some(&line[pos + 1..])),
+        _ => (line, None),
+    };
+
+    // Skip regex rules /regex/
+    if pattern_raw.starts_with('/') && pattern_raw.ends_with('/') && pattern_raw.len() > 2 {
+        return None;
+    }
+
+    let mut domain_type: Option<&'static str> = None;
+    let mut rtypes: Vec<&'static str> = Vec::new();
+
+    if let Some(opts) = opts_raw {
+        if opts.chars().any(char::is_whitespace) {
+            return None;
+        }
+        for opt in opts.split(',') {
+            let o = opt.to_ascii_lowercase();
+            if o.is_empty() {
+                continue;
+            }
+            if o.starts_with('~')
+                || o.starts_with("domain=")
+                || o.starts_with("redirect")
+                || o.starts_with("removeparam")
+                || o.starts_with("csp")
+                || matches!(
+                    o.as_str(),
+                    "elemhide"
+                        | "generichide"
+                        | "specifichide"
+                        | "document"
+                        | "popup"
+                        | "popunder"
+                        | "important"
+                        | "badfilter"
+                        | "all"
+                )
+            {
+                return None;
+            }
+            if o == "third-party" || o == "3p" {
+                domain_type = Some("thirdParty");
+            } else if o == "first-party" || o == "1p" {
+                domain_type = Some("firstParty");
+            } else if let Some(rt) = map_resource_type(&o) {
+                if !rtypes.contains(&rt) {
+                    rtypes.push(rt);
+                }
+            } else {
+                // Unknown/unsupported option: skip safely
+                return None;
+            }
+        }
+    }
+
+    if rtypes.is_empty() {
+        rtypes.extend_from_slice(default_types);
+    }
+
+    // Domain rule ||domain^ or ||domain/path
+    if let Some(rest) = pattern_raw.strip_prefix("||") {
+        let host_end = rest.find(|c| c == '^' || c == '/' || c == '*').unwrap_or(rest.len());
+        let host = rest[..host_end].to_ascii_lowercase();
+        if !is_valid_domain(&host) {
+            return None;
+        }
+        if SAFE_EXCLUSIONS.contains(&host.as_str()) {
+            return None;
+        }
+        let url_filter = format!("||{}", rest);
+        if url_filter.len() < 6 || url_filter.contains('"') || url_filter.contains('\\') {
+            return None;
+        }
+        return Some(ParsedRule {
+            url_filter,
+            domain_type,
+            resource_types: rtypes,
+        });
+    }
+
+    // Path/URL pattern (require >= 8 chars and at least one alphanumeric to avoid overly broad matches)
+    if (pattern_raw.starts_with('/') || pattern_raw.starts_with("http"))
+        && pattern_raw.len() >= 8
+        && !pattern_raw.contains('"')
+        && !pattern_raw.contains('\\')
+        && pattern_raw.chars().any(|c| c.is_ascii_alphanumeric())
+    {
+        return Some(ParsedRule {
+            url_filter: pattern_raw.to_string(),
+            domain_type,
+            resource_types: rtypes,
+        });
+    }
+
+    None
+}
+
+fn parse_hosts_line(line: &str, default_types: &[&'static str]) -> Option<ParsedRule> {
     let rest = line
         .strip_prefix("0.0.0.0")
         .or_else(|| line.strip_prefix("127.0.0.1"))?;
     if !rest.starts_with(char::is_whitespace) {
         return None;
     }
-    let token = rest.trim_start().split(|c: char| c.is_whitespace() || c == '#').next()?;
+    let token = rest
+        .trim_start()
+        .split(|c: char| c.is_whitespace() || c == '#')
+        .next()?;
     let domain = token.to_ascii_lowercase();
-    if is_valid_domain(&domain) {
-        Some(domain)
-    } else {
-        None
+    if !is_valid_domain(&domain) || SAFE_EXCLUSIONS.contains(&domain.as_str()) {
+        return None;
     }
+    Some(ParsedRule {
+        url_filter: format!("||{domain}^"),
+        domain_type: None,
+        resource_types: default_types.to_vec(),
+    })
 }
 
-fn parse_domains(text: &str, out: &mut Vec<(String, bool)>) {
+fn parse_list(text: &str, default_types: &[&'static str], out: &mut Vec<ParsedRule>) {
     for raw in text.lines() {
         let line = raw.trim();
         if line.is_empty() || line.starts_with('!') || line.starts_with('#') || line.starts_with('[')
         {
             continue;
         }
-        if let Some((d, tp)) = parse_abp_line(line) {
-            out.push((d, tp));
-        } else if let Some(d) = parse_hosts_line(line) {
-            out.push((d, false));
+        if let Some(r) = parse_abp_line(line, default_types) {
+            out.push(r);
+        } else if let Some(r) = parse_hosts_line(line, default_types) {
+            out.push(r);
         }
     }
 }
@@ -303,9 +460,9 @@ fn fetch_list(url: &str) -> Result<String, String> {
         .args([
             "-fsSL",
             "--max-time",
-            "20",
+            "25",
             "-A",
-            "KestrelShield-FilterBuilder/1.0",
+            "KestrelShield-FilterBuilder/2.0",
             url,
         ])
         .output()
@@ -316,17 +473,122 @@ fn fetch_list(url: &str) -> Result<String, String> {
     Ok(String::from_utf8_lossy(&output.stdout).into_owned())
 }
 
-fn default_output_path() -> PathBuf {
-    let cwd_rules = Path::new("rules/ruleset.json");
+fn json_escape(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 2);
+    out.push('"');
+    for ch in s.chars() {
+        match ch {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
+            c => out.push(c),
+        }
+    }
+    out.push('"');
+    out
+}
+
+fn emit_ruleset(rules: Vec<ParsedRule>, max_rules: usize, path: &Path) -> usize {
+    let mut seen: HashSet<String> = HashSet::new();
+    let mut json = String::with_capacity(rules.len().min(max_rules) * 140);
+    json.push('[');
+    let mut count = 0usize;
+
+    for r in rules {
+        let dedup_key = format!(
+            "{}|{}|{}",
+            r.url_filter,
+            r.domain_type.unwrap_or(""),
+            r.resource_types.join(",")
+        );
+        if !seen.insert(dedup_key) {
+            continue;
+        }
+        count += 1;
+        if count > 1 {
+            json.push(',');
+        }
+        let rtypes_json: Vec<String> = r.resource_types.iter().map(|t| format!("\"{t}\"")).collect();
+        let dt_json = match r.domain_type {
+            Some(dt) => format!(r#","domainType":"{dt}""#),
+            None => String::new(),
+        };
+        json.push_str(&format!(
+            r#"{{"id":{count},"priority":1,"action":{{"type":"block"}},"condition":{{"urlFilter":{},"resourceTypes":[{}]{dt_json}}}}}"#,
+            json_escape(&r.url_filter),
+            rtypes_json.join(",")
+        ));
+        if count >= max_rules {
+            break;
+        }
+    }
+    json.push(']');
+    fs::write(path, json.as_bytes()).expect("failed to write ruleset");
+    count
+}
+
+fn emit_tracking_params_ruleset(path: &Path) -> usize {
+    let params: Vec<String> = TRACKING_PARAMS.iter().map(|p| format!("\"{p}\"")).collect();
+    let json = format!(
+        r#"[{{"id":1,"priority":1,"action":{{"type":"redirect","redirect":{{"transform":{{"queryTransform":{{"removeParams":[{}]}}}}}}}},"condition":{{"urlFilter":"*","resourceTypes":["main_frame","sub_frame"]}}}}]"#,
+        params.join(",")
+    );
+    fs::write(path, json.as_bytes()).expect("failed to write tracking_params.json");
+    1
+}
+
+fn default_rules_dir() -> PathBuf {
     if Path::new("manifest.json").exists() || Path::new("rules").exists() {
-        return cwd_rules.to_path_buf();
+        return PathBuf::from("rules");
     }
     if let Ok(exe) = env::current_exe() {
         if let Some(parent) = exe.parent().and_then(|p| p.parent()) {
-            return parent.join("rules").join("ruleset.json");
+            return parent.join("rules");
         }
     }
-    cwd_rules.to_path_buf()
+    PathBuf::from("rules")
+}
+
+fn build_category(
+    name: &str,
+    builtin: &[&str],
+    urls: &[(&str, &str)],
+    default_types: &[&'static str],
+    max_rules: usize,
+    offline: bool,
+    out_path: &Path,
+) -> usize {
+    let mut rules: Vec<ParsedRule> = builtin
+        .iter()
+        .map(|d| ParsedRule {
+            url_filter: format!("||{d}^"),
+            domain_type: None,
+            resource_types: default_types.to_vec(),
+        })
+        .collect();
+
+    if !offline {
+        for (src, url) in urls {
+            eprintln!("Fetching {src} ({name})...");
+            match fetch_list(url) {
+                Ok(content) => {
+                    let before = rules.len();
+                    parse_list(&content, default_types, &mut rules);
+                    eprintln!("  parsed {} rules from {src}", rules.len() - before);
+                }
+                Err(err) => {
+                    eprintln!("  warning: failed to fetch {src}: {err}");
+                }
+            }
+        }
+    }
+
+    let count = emit_ruleset(rules, max_rules, out_path);
+    eprintln!("Wrote {count} rules to {}", out_path.display());
+    count
 }
 
 fn print_help() {
@@ -334,16 +596,14 @@ fn print_help() {
         "Kestrel Shield Filter Builder\n\n\
          USAGE:\n  build_filters [OPTIONS]\n\n\
          OPTIONS:\n  \
-           --output <PATH>      Output path for ruleset.json (default: rules/ruleset.json)\n  \
-           --max-rules <N>      Maximum static rules to emit (default: 25000)\n  \
-           --offline            Skip network fetch and build from curated built-in list\n  \
+           --rules-dir <DIR>    Output directory for rulesets (default: rules/)\n  \
+           --offline            Skip network fetch and build from curated built-in lists\n  \
            -h, --help           Show this help message"
     );
 }
 
 fn main() {
-    let mut output_path = default_output_path();
-    let mut max_rules: usize = 25_000;
+    let mut rules_dir = default_rules_dir();
     let mut offline = false;
 
     let mut args = env::args().skip(1);
@@ -354,22 +614,12 @@ fn main() {
                 return;
             }
             "--offline" => offline = true,
-            "--output" => {
+            "--rules-dir" => {
                 let val = args.next().unwrap_or_else(|| {
-                    eprintln!("error: --output requires a path");
+                    eprintln!("error: --rules-dir requires a path");
                     std::process::exit(2);
                 });
-                output_path = PathBuf::from(val);
-            }
-            "--max-rules" => {
-                let val = args.next().unwrap_or_else(|| {
-                    eprintln!("error: --max-rules requires a number");
-                    std::process::exit(2);
-                });
-                max_rules = val.parse().unwrap_or_else(|_| {
-                    eprintln!("error: invalid --max-rules value: {val}");
-                    std::process::exit(2);
-                });
+                rules_dir = PathBuf::from(val);
             }
             other => {
                 eprintln!("error: unknown argument: {other}");
@@ -378,59 +628,48 @@ fn main() {
         }
     }
 
-    let mut entries: Vec<(String, bool)> = BUILTIN_DOMAINS
-        .iter()
-        .map(|d| ((*d).to_string(), false))
-        .collect();
+    fs::create_dir_all(&rules_dir).expect("failed to create rules directory");
 
-    if !offline {
-        for (name, url) in LIST_URLS {
-            eprintln!("Fetching {name}...");
-            match fetch_list(url) {
-                Ok(content) => {
-                    let before = entries.len();
-                    parse_domains(&content, &mut entries);
-                    eprintln!("  parsed {} domain rules from {name}", entries.len() - before);
-                }
-                Err(err) => {
-                    eprintln!("  warning: failed to fetch {name}: {err}");
-                }
-            }
-        }
-    }
-
-    let exclusions: HashSet<&str> = SAFE_EXCLUSIONS.iter().copied().collect();
-    let mut seen: HashSet<String> = HashSet::new();
-    let mut json = String::from("[");
-    let mut count: usize = 0;
-
-    for (domain, third_party) in entries {
-        if exclusions.contains(domain.as_str()) || !seen.insert(domain.clone()) {
-            continue;
-        }
-        count += 1;
-        if count > 1 {
-            json.push(',');
-        }
-        let domain_type = if third_party {
-            r#","domainType":"thirdParty""#
-        } else {
-            ""
-        };
-        json.push_str(&format!(
-            r#"{{"id":{count},"priority":1,"action":{{"type":"block"}},"condition":{{"urlFilter":"||{domain}^","resourceTypes":{RESOURCE_TYPES_JSON}{domain_type}}}}}"#
-        ));
-        if count >= max_rules {
-            break;
-        }
-    }
-    json.push(']');
-
-    if let Some(parent) = output_path.parent() {
-        if !parent.as_os_str().is_empty() {
-            fs::create_dir_all(parent).expect("failed to create output directory");
-        }
-    }
-    fs::write(&output_path, json.as_bytes()).expect("failed to write ruleset.json");
-    eprintln!("Wrote {count} rules to {}", output_path.display());
+    // Keep total enabled static rules strictly <= 29,501 (< 30,000 MV3 guaranteed minimum).
+    let ads = build_category(
+        "ads",
+        BUILTIN_ADS,
+        ADS_URLS,
+        DEFAULT_RESOURCE_TYPES,
+        12_000,
+        offline,
+        &rules_dir.join("ads.json"),
+    );
+    let privacy = build_category(
+        "privacy",
+        BUILTIN_PRIVACY,
+        PRIVACY_URLS,
+        DEFAULT_RESOURCE_TYPES,
+        10_000,
+        offline,
+        &rules_dir.join("privacy.json"),
+    );
+    let malware = build_category(
+        "malware",
+        BUILTIN_MALWARE,
+        MALWARE_URLS,
+        MALWARE_RESOURCE_TYPES,
+        4_000,
+        offline,
+        &rules_dir.join("malware.json"),
+    );
+    let annoyances = build_category(
+        "annoyances",
+        BUILTIN_ANNOYANCES,
+        ANNOYANCES_URLS,
+        DEFAULT_RESOURCE_TYPES,
+        3_500,
+        offline,
+        &rules_dir.join("annoyances.json"),
+    );
+    let tracking = emit_tracking_params_ruleset(&rules_dir.join("tracking_params.json"));
+    eprintln!(
+        "Total static rules: {} (ads={ads}, privacy={privacy}, malware={malware}, annoyances={annoyances}, tracking_params={tracking})",
+        ads + privacy + malware + annoyances + tracking
+    );
 }

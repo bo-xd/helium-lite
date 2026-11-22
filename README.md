@@ -62,8 +62,12 @@ kestrel-settings --set renderer_process_limit=6 --set v8_max_old_space_mb=768
 
 | Key | Default | Effect |
 | --- | --- | --- |
-| `search_engine` | `"duckduckgo"` | Default omnibox search engine (`duckduckgo`, `brave`, `startpage`, `google`), auto-configured in `Web Data` so address-bar queries never fall back to `No Search` (`http://<query>/`). |
-| `tab_sleeping` | `true` | Enables Memory Saver (`HighEfficiencyModeAvailable`, `MemorySaverModeAvailable`), caps renderer processes (`--renderer-process-limit`), caps V8 heap (`--js-flags=--max-old-space-size`), and disables background networking, telemetry, prefetching, and speculation rules. |
+| `search_engine` | `"duckduckgo"` | Default omnibox search engine (`duckduckgo`, `brave`, `startpage`, `google`), auto-configured in `Default/Preferences` so address-bar queries never fall back to `No Search`. |
+| `ram_profile` | `"ultra"` | `"ultra"` caps renderers at `3` and V8 heap at `384` MB; `"balanced"` uses `4` renderers and `512` MB. |
+| `strict_security` | `true` | Enforces `--site-per-process` Site Isolation, `HttpsUpgrades` + `HttpsFirstBalancedModeAutoEnable`, blocks 3rd-party cookies, and disables Privacy Sandbox / WebBluetooth / WebUSB / PaymentRequest. |
+| `doh_provider` | `"quad9"` | DNS-over-HTTPS provider (`quad9`, `cloudflare`, `mullvad`, `off`) written to `Default/Preferences`. |
+| `webrtc_privacy` | `true` | Prevents WebRTC local IP leaks via `--force-webrtc-ip-handling-policy=disable_non_proxied_udp`. |
+| `tab_sleeping` | `true` | Enables aggressive Memory Saver (`state: 2`), caps renderer processes & V8 heap, and disables background networking, telemetry, translate, speech API, prefetching, and speculation rules. |
 | `hardware_accel` | `true` | Enables GPU rasterization, zero-copy, Wayland/X11 auto Ozone platform, WebGL, and VA-API hardware video decoding/encoding (`VaapiVideoDecoder`, `VaapiVideoEncoder`, `VaapiVideoDecodeLinuxGL`). |
 | `widevine_drm` | `false` | Symlinks `WidevineCdm` (from `~/.local/share/kestrel/runtime/WidevineCdm`, `/usr/lib/chromium/WidevineCdm`, `~/.config/sh.cider.genten/WidevineCdm`, or Helium) into the Kestrel profile when enabled, and removes the symlink when disabled. |
 | `adblocker` | `true` | Loads `adblocker/` via `--load-extension`. |
@@ -72,6 +76,7 @@ kestrel-settings --set renderer_process_limit=6 --set v8_max_old_space_mb=768
 ### Launcher Options
 
 - `kestrel install-runtime` — Download/update the standalone portable Ungoogled Chromium runtime to `~/.local/share/kestrel/runtime/`.
+- `kestrel install-webstore` — Download the latest `NeverDecouple/chromium-web-store` `.crx` to `~/.local/share/kestrel/extensions/` for one-click Chrome Web Store installs.
 - `kestrel --auto-runtime` — Automatically download the standalone runtime on launch if none is found.
 - `kestrel --dry-run` (or `--print-cmd`) — Print the resolved browser command and flags without launching.
 - `kestrel settings` / `kestrel --settings` — Open `kestrel-settings`.

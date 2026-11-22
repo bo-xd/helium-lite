@@ -268,7 +268,12 @@ mkdir -p "${STAGING}"
 
 cp -a out/Kestrel/chrome "${STAGING}/chrome"
 cp -a out/Kestrel/chrome_sandbox "${STAGING}/chrome-sandbox"
+if [[ -f out/Kestrel/chrome_crashpad_handler ]]; then
+  cp -a out/Kestrel/chrome_crashpad_handler "${STAGING}/chrome_crashpad_handler"
+  chmod 755 "${STAGING}/chrome_crashpad_handler"
+fi
 cp -a out/Kestrel/*.pak out/Kestrel/*.bin out/Kestrel/icudtl.dat "${STAGING}/" 2>/dev/null || true
+cp -a out/Kestrel/vk_swiftshader_icd.json "${STAGING}/" 2>/dev/null || true
 cp -a out/Kestrel/locales "${STAGING}/" 2>/dev/null || true
 cp -a out/Kestrel/lib*.so "${STAGING}/" 2>/dev/null || true
 chmod 755 "${STAGING}/chrome" "${STAGING}/chrome-sandbox"

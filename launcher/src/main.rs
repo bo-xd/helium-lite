@@ -14,6 +14,10 @@ struct Config {
     profile_dir: String,
     cache_dir: String,
     search_engine: String,
+    ram_profile: String,
+    strict_security: bool,
+    doh_provider: String,
+    webrtc_privacy: bool,
     tab_sleeping: bool,
     hardware_accel: bool,
     widevine_drm: bool,
@@ -32,13 +36,17 @@ impl Default for Config {
             profile_dir: "~/.config/kestrel/profile".to_string(),
             cache_dir: "~/.cache/kestrel".to_string(),
             search_engine: "duckduckgo".to_string(),
+            ram_profile: "ultra".to_string(),
+            strict_security: true,
+            doh_provider: "quad9".to_string(),
+            webrtc_privacy: true,
             tab_sleeping: true,
             hardware_accel: true,
             widevine_drm: false,
             adblocker: true,
             extension_support: true,
-            renderer_process_limit: 4,
-            v8_max_old_space_mb: 512,
+            renderer_process_limit: 3,
+            v8_max_old_space_mb: 384,
             widevine_path: "auto".to_string(),
             extra_flags: Vec::new(),
         }
@@ -303,6 +311,10 @@ impl Config {
                 ("profile_dir", JsonVal::Str(s)) => cfg.profile_dir = s,
                 ("cache_dir", JsonVal::Str(s)) => cfg.cache_dir = s,
                 ("search_engine", JsonVal::Str(s)) => cfg.search_engine = s,
+                ("ram_profile", JsonVal::Str(s)) => cfg.ram_profile = s,
+                ("strict_security", JsonVal::Bool(b)) => cfg.strict_security = b,
+                ("doh_provider", JsonVal::Str(s)) => cfg.doh_provider = s,
+                ("webrtc_privacy", JsonVal::Bool(b)) => cfg.webrtc_privacy = b,
                 ("tab_sleeping", JsonVal::Bool(b)) => cfg.tab_sleeping = b,
                 ("hardware_accel", JsonVal::Bool(b)) => cfg.hardware_accel = b,
                 ("widevine_drm", JsonVal::Bool(b)) => cfg.widevine_drm = b,
@@ -331,11 +343,15 @@ impl Config {
             .collect::<Vec<_>>()
             .join(", ");
         format!(
-            "{{\n  \"browser_binary\": {},\n  \"profile_dir\": {},\n  \"cache_dir\": {},\n  \"search_engine\": {},\n  \"tab_sleeping\": {},\n  \"hardware_accel\": {},\n  \"widevine_drm\": {},\n  \"adblocker\": {},\n  \"extension_support\": {},\n  \"renderer_process_limit\": {},\n  \"v8_max_old_space_mb\": {},\n  \"widevine_path\": {},\n  \"extra_flags\": [{}]\n}}\n",
+            "{{\n  \"browser_binary\": {},\n  \"profile_dir\": {},\n  \"cache_dir\": {},\n  \"search_engine\": {},\n  \"ram_profile\": {},\n  \"strict_security\": {},\n  \"doh_provider\": {},\n  \"webrtc_privacy\": {},\n  \"tab_sleeping\": {},\n  \"hardware_accel\": {},\n  \"widevine_drm\": {},\n  \"adblocker\": {},\n  \"extension_support\": {},\n  \"renderer_process_limit\": {},\n  \"v8_max_old_space_mb\": {},\n  \"widevine_path\": {},\n  \"extra_flags\": [{}]\n}}\n",
             json_escape(&self.browser_binary),
             json_escape(&self.profile_dir),
             json_escape(&self.cache_dir),
             json_escape(&self.search_engine),
+            json_escape(&self.ram_profile),
+            self.strict_security,
+            json_escape(&self.doh_provider),
+            self.webrtc_privacy,
             self.tab_sleeping,
             self.hardware_accel,
             self.widevine_drm,
@@ -711,10 +727,46 @@ fn sql_escape(s: &str) -> String {
     s.replace('\'', "''")
 }
 
-fn ensure_search_engine(profile_dir: &Path, engine: &str, force: bool, cmd_hint: Option<&[String]>) {
-    let Some(spec) = search_engine_spec(engine) else {
+fn json_set_obj_key(entries: &mut Vec<(String, JsonVal)>, key: &str, val: JsonVal) {
+    if let Some((_, existing)) = entries.iter_mut().find(|(k, _)| k == key) {
+        *existing = val;
+    } else {
+        entries.push((key.to_string(), val));
+    }
+}
+
+fn json_set_nested(entries: &mut Vec<(String, JsonVal)>, path: &[&str], val: JsonVal) {
+    if path.is_empty() {
         return;
-    };
+    }
+    if path.len() == 1 {
+        json_set_obj_key(entries, path[0], val);
+        return;
+    }
+    if let Some((_, JsonVal::Obj(sub))) = entries.iter_mut().find(|(k, _)| k == path[0]) {
+        json_set_nested(sub, &path[1..], val);
+    } else {
+        let mut sub = Vec::new();
+        json_set_nested(&mut sub, &path[1..], val);
+        json_set_obj_key(entries, path[0], JsonVal::Obj(sub));
+    }
+}
+
+fn doh_template_url(provider: &str) -> Option<&'static str> {
+    match provider.trim().to_ascii_lowercase().as_str() {
+        "quad9" => Some("https://dns.quad9.net/dns-query"),
+        "cloudflare" => Some("https://cloudflare-dns.com/dns-query"),
+        "mullvad" => Some("https://dns.mullvad.net/dns-query"),
+        _ => None,
+    }
+}
+
+fn ensure_profile_preferences(
+    profile_dir: &Path,
+    cfg: &Config,
+    force_search: bool,
+    cmd_hint: Option<&[String]>,
+) {
     if profile_dir.join("SingletonLock").exists() {
         return;
     }
@@ -740,66 +792,135 @@ fn ensure_search_engine(profile_dir: &Path, engine: &str, force: bool, cmd_hint:
     if prefs_path.is_file() {
         if let Ok(raw) = fs::read_to_string(&prefs_path) {
             if let Ok(JsonVal::Obj(mut entries)) = JsonParser::new(&raw).parse_val() {
-                let already_set = if !force {
-                    entries.iter().find(|(k, _)| k == "default_search_provider_data").is_some_and(|(_, v)| {
-                        if let JsonVal::Obj(sub) = v {
-                            sub.iter().any(|(sk, sv)| {
-                                if sk == "template_url_data" {
-                                    if let JsonVal::Obj(tpl) = sv {
-                                        return tpl.iter().any(|(tk, tv)| {
-                                            tk == "url"
-                                                && matches!(tv, JsonVal::Str(u) if u != "http://{searchTerms}" && !u.is_empty())
-                                        });
+                if let Some(spec) = search_engine_spec(&cfg.search_engine) {
+                    let already_set = if !force_search {
+                        entries.iter().find(|(k, _)| k == "default_search_provider_data").is_some_and(|(_, v)| {
+                            if let JsonVal::Obj(sub) = v {
+                                sub.iter().any(|(sk, sv)| {
+                                    if sk == "template_url_data" {
+                                        if let JsonVal::Obj(tpl) = sv {
+                                            return tpl.iter().any(|(tk, tv)| {
+                                                tk == "url"
+                                                    && matches!(tv, JsonVal::Str(u) if u != "http://{searchTerms}" && !u.is_empty())
+                                            });
+                                        }
                                     }
-                                }
+                                    false
+                                })
+                            } else {
                                 false
-                            })
-                        } else {
-                            false
-                        }
-                    })
-                } else {
-                    false
-                };
+                            }
+                        })
+                    } else {
+                        false
+                    };
 
-                if !already_set {
-                    let tpl = build_template_url_json(&spec);
-                    let dspd = JsonVal::Obj(vec![
-                        ("mirrored_template_url_data".into(), tpl.clone()),
-                        ("template_url_data".into(), tpl),
-                    ]);
-                    entries.retain(|(k, _)| k != "default_search_provider_data");
-                    entries.push(("default_search_provider_data".into(), dspd));
+                    if !already_set {
+                        let tpl = build_template_url_json(&spec);
+                        let dspd = JsonVal::Obj(vec![
+                            ("mirrored_template_url_data".into(), tpl.clone()),
+                            ("template_url_data".into(), tpl),
+                        ]);
+                        entries.retain(|(k, _)| k != "default_search_provider_data");
+                        entries.push(("default_search_provider_data".into(), dspd));
 
-                    if let Some((_, JsonVal::Obj(prot))) = entries.iter_mut().find(|(k, _)| k == "protection") {
-                        if let Some((_, JsonVal::Obj(macs))) = prot.iter_mut().find(|(k, _)| k == "macs") {
-                            macs.retain(|(k, _)| k != "default_search_provider_data");
+                        if let Some((_, JsonVal::Obj(prot))) = entries.iter_mut().find(|(k, _)| k == "protection") {
+                            if let Some((_, JsonVal::Obj(macs))) = prot.iter_mut().find(|(k, _)| k == "macs") {
+                                macs.retain(|(k, _)| k != "default_search_provider_data");
+                            }
                         }
                     }
-                    let _ = fs::write(&prefs_path, json_serialize(&JsonVal::Obj(entries)));
                 }
+
+                if cfg.strict_security {
+                    json_set_obj_key(&mut entries, "https_only_mode_enabled", JsonVal::Bool(true));
+                    json_set_nested(&mut entries, &["profile", "cookie_controls_mode"], JsonVal::Int(1));
+                }
+
+                if let Some(tpl) = doh_template_url(&cfg.doh_provider) {
+                    json_set_nested(&mut entries, &["dns_over_https", "mode"], JsonVal::Str("secure".into()));
+                    json_set_nested(&mut entries, &["dns_over_https", "templates"], JsonVal::Str(tpl.into()));
+                } else {
+                    json_set_nested(&mut entries, &["dns_over_https", "mode"], JsonVal::Str("off".into()));
+                }
+
+                if cfg.tab_sleeping {
+                    json_set_nested(
+                        &mut entries,
+                        &["performance_tuning", "high_efficiency_mode", "state"],
+                        JsonVal::Int(2),
+                    );
+                }
+
+                let _ = fs::write(&prefs_path, json_serialize(&JsonVal::Obj(entries)));
             }
         }
     }
 
     let web_data = profile_dir.join("Default/Web Data");
     if web_data.is_file() && which("sqlite3").is_some() {
-        let sql = format!(
-            "UPDATE keywords SET short_name='{}', keyword='{}', favicon_url='{}', url='{}', suggest_url='{}', prepopulate_id={} WHERE id=2 AND (short_name='No Search' OR url='http://{{searchTerms}}');",
-            sql_escape(spec.short_name),
-            sql_escape(spec.keyword),
-            sql_escape(spec.favicon_url),
-            sql_escape(spec.url),
-            sql_escape(spec.suggest_url),
-            spec.prepopulate_id
-        );
-        let _ = Command::new("sqlite3")
-            .arg(&web_data)
-            .arg(sql)
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status();
+        if let Some(spec) = search_engine_spec(&cfg.search_engine) {
+            let sql = format!(
+                "UPDATE keywords SET short_name='{}', keyword='{}', favicon_url='{}', url='{}', suggest_url='{}', prepopulate_id={} WHERE id=2 AND (short_name='No Search' OR url='http://{{searchTerms}}');",
+                sql_escape(spec.short_name),
+                sql_escape(spec.keyword),
+                sql_escape(spec.favicon_url),
+                sql_escape(spec.url),
+                sql_escape(spec.suggest_url),
+                spec.prepopulate_id
+            );
+            let _ = Command::new("sqlite3")
+                .arg(&web_data)
+                .arg(sql)
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status();
+        }
     }
+}
+
+fn install_webstore() -> Result<(), String> {
+    println!("Fetching latest chromium-web-store release metadata...");
+    let api_out = Command::new("curl")
+        .args([
+            "-fsSL",
+            "-H",
+            "User-Agent: kestrel-installer",
+            "https://api.github.com/repos/NeverDecouple/chromium-web-store/releases/latest",
+        ])
+        .output()
+        .map_err(|e| format!("Failed to run curl: {e}"))?;
+
+    if !api_out.status.success() {
+        return Err("Failed to query NeverDecouple/chromium-web-store releases API".into());
+    }
+
+    let json_str = String::from_utf8(api_out.stdout).map_err(|e| e.to_string())?;
+    let parsed = JsonParser::new(&json_str).parse_val()?;
+    let url = find_download_url(&parsed, ".crx")
+        .ok_or_else(|| "No .crx asset found in latest chromium-web-store release".to_string())?;
+
+    let ext_dir = home_dir().join(".local/share/kestrel/extensions");
+    fs::create_dir_all(&ext_dir).map_err(|e| e.to_string())?;
+    let crx_path = ext_dir.join("chromium-web-store.crx");
+
+    println!("Downloading {url}...");
+    let dl_status = Command::new("curl")
+        .args(["-fL", "--progress-bar", "-o"])
+        .arg(&crx_path)
+        .arg(&url)
+        .status()
+        .map_err(|e| format!("Failed to run curl: {e}"))?;
+    if !dl_status.success() {
+        return Err("Download of chromium-web-store.crx failed".into());
+    }
+
+    println!(
+        "Downloaded {}\nTo install it in Kestrel: open Kestrel and drag-and-drop the .crx onto chrome://extensions (or run: kestrel {})",
+        crx_path.display(),
+        crx_path.display()
+    );
+    Ok(())
 }
 
 fn sync_widevine_symlink(profile_dir: &Path, enabled: bool, widevine_cfg: &str) {
@@ -824,12 +945,38 @@ fn build_flags(cfg: &Config, profile_dir: &Path, cache_dir: &Path) -> Vec<String
         "--no-default-browser-check".to_string(),
     ];
 
-    let mut enable_features: Vec<&str> = vec!["HttpsUpgrades"];
+    let mut enable_features: Vec<&str> = Vec::new();
     let mut disable_features: Vec<&str> = Vec::new();
 
+    if cfg.strict_security {
+        flags.push("--site-per-process".to_string());
+        enable_features.extend(["HttpsUpgrades", "HttpsFirstBalancedModeAutoEnable"]);
+        disable_features.extend([
+            "PrivacySandboxAdsAPIsOverride",
+            "InterestGroupStorage",
+            "Fledge",
+            "Topics",
+            "AttributionReportingCrossAppWeb",
+            "WebBluetooth",
+            "WebUSB",
+            "PaymentRequest",
+        ]);
+    } else {
+        enable_features.push("HttpsUpgrades");
+    }
+
+    if cfg.webrtc_privacy {
+        flags.push("--force-webrtc-ip-handling-policy=disable_non_proxied_udp".to_string());
+    }
+
     if cfg.tab_sleeping {
-        flags.push(format!("--renderer-process-limit={}", cfg.renderer_process_limit));
-        flags.push(format!("--js-flags=--max-old-space-size={}", cfg.v8_max_old_space_mb));
+        let (proc_limit, v8_mb) = if cfg.ram_profile.eq_ignore_ascii_case("ultra") {
+            (cfg.renderer_process_limit.min(3), cfg.v8_max_old_space_mb.min(384))
+        } else {
+            (cfg.renderer_process_limit, cfg.v8_max_old_space_mb)
+        };
+        flags.push(format!("--renderer-process-limit={proc_limit}"));
+        flags.push(format!("--js-flags=--max-old-space-size={v8_mb}"));
         flags.extend(
             [
                 "--disable-background-networking",
@@ -840,6 +987,8 @@ fn build_flags(cfg: &Config, profile_dir: &Path, cache_dir: &Path) -> Vec<String
                 "--no-pings",
                 "--dns-prefetch-disable",
                 "--disable-sync",
+                "--disable-translate",
+                "--disable-speech-api",
             ]
             .into_iter()
             .map(String::from),
@@ -940,16 +1089,20 @@ fn apply_flatpak_filesystems(
 
 // --- Settings Mode (TUI + CLI) ---
 
-const TOGGLES: [(&str, &str, &str); 5] = [
+const TOGGLES: [(&str, &str, &str); 7] = [
+    ("strict_security", "Strict Security (Site Isolation + HTTPS-First + 3P Cookie Block)", "Enforce --site-per-process, HTTPS-First, block 3rd-party cookies & Privacy Sandbox"),
+    ("webrtc_privacy", "WebRTC IP Privacy", "Prevent WebRTC local IP leaks (--force-webrtc-ip-handling-policy=disable_non_proxied_udp)"),
     ("tab_sleeping", "Tab Sleeping & Low-RAM Mode", "Aggressive Memory Saver, renderer cap, V8 heap limit, no background net/telemetry"),
     ("hardware_accel", "Hardware Acceleration (VA-API + WebGL)", "GPU rasterization, zero-copy, VA-API video decode/encode for YouTube"),
     ("widevine_drm", "Widevine DRM", "Enable Widevine CDM symlink for protected media (Spotify, Netflix, etc.)"),
-    ("adblocker", "Built-in Adblocker", "Load custom low-RAM MV3 adblocker extension"),
+    ("adblocker", "Built-in Adblocker (Kestrel Shield)", "Load custom low-RAM MV3 adblocker extension"),
     ("extension_support", "Extension & Web Store Support", "Allow installing extensions and .crx packages from Chrome Web Store"),
 ];
 
 fn get_toggle(cfg: &Config, key: &str) -> Option<bool> {
     match key {
+        "strict_security" => Some(cfg.strict_security),
+        "webrtc_privacy" => Some(cfg.webrtc_privacy),
         "tab_sleeping" => Some(cfg.tab_sleeping),
         "hardware_accel" => Some(cfg.hardware_accel),
         "widevine_drm" => Some(cfg.widevine_drm),
@@ -961,6 +1114,8 @@ fn get_toggle(cfg: &Config, key: &str) -> Option<bool> {
 
 fn set_toggle(cfg: &mut Config, key: &str, val: bool) -> bool {
     match key {
+        "strict_security" => cfg.strict_security = val,
+        "webrtc_privacy" => cfg.webrtc_privacy = val,
         "tab_sleeping" => cfg.tab_sleeping = val,
         "hardware_accel" => cfg.hardware_accel = val,
         "widevine_drm" => cfg.widevine_drm = val,
@@ -987,9 +1142,11 @@ fn print_settings_status(cfg: &Config) {
         println!("           {}", desc);
     }
     println!();
-    println!("  [6] [{}] Renderer Process Limit (renderer_process_limit, 1-32)", cfg.renderer_process_limit);
-    println!("  [7] [{}] V8 Max Heap per Tab (MB) (v8_max_old_space_mb, 128-4096)", cfg.v8_max_old_space_mb);
-    println!("  [8] [{}] Default Search Engine (duckduckgo | brave | startpage | google)", cfg.search_engine);
+    println!("  [8]  [{}] Renderer Process Limit (renderer_process_limit, 1-32)", cfg.renderer_process_limit);
+    println!("  [9]  [{}] V8 Max Heap per Tab (MB) (v8_max_old_space_mb, 128-4096)", cfg.v8_max_old_space_mb);
+    println!("  [10] [{}] RAM Profile (ultra | balanced)", cfg.ram_profile);
+    println!("  [11] [{}] DNS-over-HTTPS Provider (quad9 | cloudflare | mullvad | off)", cfg.doh_provider);
+    println!("  [12] [{}] Default Search Engine (duckduckgo | brave | startpage | google)", cfg.search_engine);
     println!();
 }
 
@@ -1023,14 +1180,14 @@ fn run_settings_interactive(mut cfg: Config) -> i32 {
                 cfg = Config::default();
                 let _ = save_config(&cfg);
             }
-            "1" | "2" | "3" | "4" | "5" => {
+            "1" | "2" | "3" | "4" | "5" | "6" | "7" => {
                 let idx = choice.parse::<usize>().unwrap() - 1;
                 let key = TOGGLES[idx].0;
                 let cur = get_toggle(&cfg, key).unwrap_or(false);
                 set_toggle(&mut cfg, key, !cur);
                 let _ = save_config(&cfg);
             }
-            "6" => {
+            "8" => {
                 print!("Enter Renderer Process Limit (1-32) [{}]: ", cfg.renderer_process_limit);
                 let _ = stdout.flush();
                 let mut raw = String::new();
@@ -1043,7 +1200,7 @@ fn run_settings_interactive(mut cfg: Config) -> i32 {
                     }
                 }
             }
-            "7" => {
+            "9" => {
                 print!("Enter V8 Max Heap per Tab in MB (128-4096) [{}]: ", cfg.v8_max_old_space_mb);
                 let _ = stdout.flush();
                 let mut raw = String::new();
@@ -1056,7 +1213,31 @@ fn run_settings_interactive(mut cfg: Config) -> i32 {
                     }
                 }
             }
-            "8" => {
+            "10" => {
+                cfg.ram_profile = if cfg.ram_profile == "ultra" {
+                    cfg.renderer_process_limit = 4;
+                    cfg.v8_max_old_space_mb = 512;
+                    "balanced".into()
+                } else {
+                    cfg.renderer_process_limit = 3;
+                    cfg.v8_max_old_space_mb = 384;
+                    "ultra".into()
+                };
+                let _ = save_config(&cfg);
+            }
+            "11" => {
+                print!("Enter DoH provider (quad9, cloudflare, mullvad, off) [{}]: ", cfg.doh_provider);
+                let _ = stdout.flush();
+                let mut raw = String::new();
+                if stdin.lock().read_line(&mut raw).is_ok() {
+                    let val = raw.trim().to_ascii_lowercase();
+                    if matches!(val.as_str(), "quad9" | "cloudflare" | "mullvad" | "off") {
+                        cfg.doh_provider = val;
+                        let _ = save_config(&cfg);
+                    }
+                }
+            }
+            "12" => {
                 print!("Enter search engine (duckduckgo, brave, startpage, google) [{}]: ", cfg.search_engine);
                 let _ = stdout.flush();
                 let mut raw = String::new();
@@ -1065,7 +1246,7 @@ fn run_settings_interactive(mut cfg: Config) -> i32 {
                     if search_engine_spec(&val).is_some() {
                         cfg.search_engine = val;
                         let _ = save_config(&cfg);
-                        ensure_search_engine(&expand_tilde(&cfg.profile_dir), &cfg.search_engine, true, None);
+                        ensure_profile_preferences(&expand_tilde(&cfg.profile_dir), &cfg, true, None);
                     }
                 }
             }
@@ -1146,7 +1327,7 @@ fn run_settings(args: &[String]) -> i32 {
             return 1;
         };
         match key {
-            "tab_sleeping" | "hardware_accel" | "widevine_drm" | "adblocker" | "extension_support" => {
+            "strict_security" | "webrtc_privacy" | "tab_sleeping" | "hardware_accel" | "widevine_drm" | "adblocker" | "extension_support" => {
                 match parse_bool(val) {
                     Ok(b) => {
                         set_toggle(&mut cfg, key, b);
@@ -1171,6 +1352,29 @@ fn run_settings(args: &[String]) -> i32 {
                     return 1;
                 }
             },
+            "ram_profile" => {
+                let low = val.trim().to_ascii_lowercase();
+                if !matches!(low.as_str(), "ultra" | "balanced") {
+                    eprintln!("Unsupported ram_profile '{val}'. Choose: ultra, balanced");
+                    return 1;
+                }
+                cfg.ram_profile = low.clone();
+                if low == "ultra" {
+                    cfg.renderer_process_limit = 3;
+                    cfg.v8_max_old_space_mb = 384;
+                } else {
+                    cfg.renderer_process_limit = 4;
+                    cfg.v8_max_old_space_mb = 512;
+                }
+            }
+            "doh_provider" => {
+                let low = val.trim().to_ascii_lowercase();
+                if !matches!(low.as_str(), "quad9" | "cloudflare" | "mullvad" | "off") {
+                    eprintln!("Unsupported doh_provider '{val}'. Choose: quad9, cloudflare, mullvad, off");
+                    return 1;
+                }
+                cfg.doh_provider = low;
+            }
             "search_engine" => {
                 let low = val.trim().to_ascii_lowercase();
                 if search_engine_spec(&low).is_none() {
@@ -1178,7 +1382,7 @@ fn run_settings(args: &[String]) -> i32 {
                     return 1;
                 }
                 cfg.search_engine = low;
-                ensure_search_engine(&expand_tilde(&cfg.profile_dir), &cfg.search_engine, true, None);
+                ensure_profile_preferences(&expand_tilde(&cfg.profile_dir), &cfg, true, None);
             }
             "browser_binary" => cfg.browser_binary = val.to_string(),
             "profile_dir" => cfg.profile_dir = val.to_string(),
@@ -1212,6 +1416,7 @@ fn print_launcher_help() {
         "Usage: kestrel [LAUNCHER_OPTION | CHROMIUM_ARGS...]\n\n\
          Launcher options:\n\
            install-runtime        Download standalone Ungoogled Chromium runtime\n\
+           install-webstore       Download chromium-web-store .crx for Chrome Web Store\n\
            --auto-runtime         Auto-download standalone runtime if none is found\n\
            --settings, settings   Open interactive settings manager\n\
            --import               Run Kestrel profile/bookmark importer\n\
@@ -1241,6 +1446,13 @@ fn main() {
             }
             "install-runtime" | "--install-runtime" => {
                 if let Err(e) = install_runtime() {
+                    eprintln!("Error: {e}");
+                    process::exit(1);
+                }
+                return;
+            }
+            "install-webstore" | "--install-webstore" => {
+                if let Err(e) = install_webstore() {
                     eprintln!("Error: {e}");
                     process::exit(1);
                 }
@@ -1323,7 +1535,7 @@ fn main() {
         return;
     }
 
-    ensure_search_engine(&profile_dir, &cfg.search_engine, false, Some(&cmd));
+    ensure_profile_preferences(&profile_dir, &cfg, false, Some(&cmd));
 
     let err = Command::new(&cmd[0])
         .args(&cmd[1..])

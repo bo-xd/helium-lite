@@ -54,14 +54,25 @@
   function update() {
     const host = normalizeHost(location.hostname);
     chrome.storage.local.get(
-      { enabled: true, cosmeticEnabled: true, whitelist: [] },
+      {
+        enabled: true,
+        cosmeticEnabled: true,
+        antiFingerprintEnabled: true,
+        blockingLevel: "standard",
+        whitelist: []
+      },
       (data) => {
         if (chrome.runtime.lastError) return;
-        const active =
-          data.enabled !== false &&
-          data.cosmeticEnabled !== false &&
-          !isWhitelisted(host, data.whitelist);
-        applyCosmetic(active);
+        const shieldsUp = data.enabled !== false && !isWhitelisted(host, data.whitelist);
+        applyCosmetic(shieldsUp && data.cosmeticEnabled !== false);
+        window.dispatchEvent(
+          new CustomEvent("kestrel-shield-config", {
+            detail: {
+              fp: shieldsUp && data.antiFingerprintEnabled !== false,
+              aggressive: shieldsUp && data.blockingLevel === "aggressive"
+            }
+          })
+        );
       }
     );
   }
@@ -70,7 +81,13 @@
 
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area !== "local") return;
-    if (changes.enabled || changes.cosmeticEnabled || changes.whitelist) {
+    if (
+      changes.enabled ||
+      changes.cosmeticEnabled ||
+      changes.antiFingerprintEnabled ||
+      changes.blockingLevel ||
+      changes.whitelist
+    ) {
       update();
     }
   });

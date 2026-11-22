@@ -7,10 +7,10 @@
   <style>
     :root {
       color-scheme: dark;
-      --bg: #0f1115;
-      --surface: #171a21;
-      --surface-2: #1f242e;
-      --border: #282e3b;
+      --bg: #0d1017;
+      --surface: #151a24;
+      --surface-2: #1d2331;
+      --border: #272f40;
       --text: #e6edf3;
       --muted: #8b949e;
       --accent: #58a6ff;
@@ -25,7 +25,7 @@
       font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     }
     .container {
-      max-width: 680px;
+      max-width: 720px;
       margin: 0 auto;
       display: flex;
       flex-direction: column;
@@ -51,6 +51,14 @@
     .toggle-row:last-child { border-bottom: none; padding-bottom: 0; }
     .toggle-row:first-of-type { padding-top: 0; }
     .toggle-row small { display: block; color: var(--muted); font-size: 12px; }
+    select {
+      background: var(--surface-2);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 5px 10px;
+      font-size: 13px;
+    }
     .input-row {
       display: flex;
       gap: 8px;
@@ -123,17 +131,34 @@
   <main class="container">
     <header>
       <h1>Kestrel Shield Settings</h1>
-      <p class="sub">Ultra-low-RAM Manifest V3 ad &amp; tracker blocker powered by declarativeNetRequest.</p>
+      <p class="sub">Ultra-low-RAM Manifest V3 ad, tracker, malware, and fingerprint blocker.</p>
     </header>
 
     <section class="panel">
       <h2>Protection</h2>
       <label class="toggle-row">
         <span>
-          <strong>Global Adblocking</strong>
-          <small>Enable static &amp; custom declarativeNetRequest network rules</small>
+          <strong>Global Shields</strong>
+          <small>Enable all declarativeNetRequest rulesets &amp; protections</small>
         </span>
         <input type="checkbox" id="optGlobal">
+      </label>
+      <div class="toggle-row">
+        <span>
+          <strong>Blocking Level</strong>
+          <small>Aggressive mode also blocks third-party pings, CSP reports, and all sendBeacon calls</small>
+        </span>
+        <select id="optLevel">
+          <option value="standard">Standard</option>
+          <option value="aggressive">Aggressive</option>
+        </select>
+      </div>
+      <label class="toggle-row">
+        <span>
+          <strong>Anti-Fingerprinting</strong>
+          <small>Canvas/AudioContext jitter, tracker sendBeacon block, &lt;a ping&gt; strip</small>
+        </span>
+        <input type="checkbox" id="optFingerprint">
       </label>
       <label class="toggle-row">
         <span>
@@ -141,6 +166,20 @@
           <small>Inject lightweight CSS to hide ad containers on pages</small>
         </span>
         <input type="checkbox" id="optCosmetic">
+      </label>
+      <label class="toggle-row">
+        <span>
+          <strong>Annoyances &amp; Cookie Banners</strong>
+          <small>Enable Fanboy Annoyance &amp; Cookie Monster DNR ruleset</small>
+        </span>
+        <input type="checkbox" id="optAnnoyances">
+      </label>
+      <label class="toggle-row">
+        <span>
+          <strong>Strip Tracking Query Parameters</strong>
+          <small>Remove utm_*, fbclid, gclid, mc_cid, igshid, yclid, etc. via DNR</small>
+        </span>
+        <input type="checkbox" id="optTrackingParams">
       </label>
     </section>
 
@@ -154,7 +193,16 @@
     </section>
 
     <section class="panel">
-      <h2>Whitelisted Sites</h2>
+      <h2>Script-Blocked Sites</h2>
+      <form id="scriptsForm" class="input-row">
+        <input type="text" id="scriptsInput" placeholder="e.g. untrusted-site.com" autocomplete="off">
+        <button type="submit">Add</button>
+      </form>
+      <ul id="scriptsList"></ul>
+    </section>
+
+    <section class="panel">
+      <h2>Whitelisted Sites (Shields DOWN)</h2>
       <form id="whitelistForm" class="input-row">
         <input type="text" id="whitelistInput" placeholder="e.g. example.com" autocomplete="off">
         <button type="submit">Add</button>
@@ -163,9 +211,12 @@
     </section>
 
     <section class="panel">
-      <h2>Filter Ruleset</h2>
-      <p class="sub" id="rulesetInfo">
-        To refresh <code>rules/ruleset.json</code> from EasyList, EasyPrivacy, and Peter Lowe's list, run:
+      <h2>Filter Rulesets</h2>
+      <p class="sub">
+        Active rulesets: <code>rules/ads.json</code>, <code>rules/privacy.json</code>,
+        <code>rules/malware.json</code>, <code>rules/annoyances.json</code>,
+        <code>rules/tracking_params.json</code>.<br>
+        To refresh from EasyList, EasyPrivacy, Peter Lowe, uBlock Badware, and Fanboy lists, run:
         <code>rustc -O scripts/build_filters.rs -o scripts/build_filters &amp;&amp; ./scripts/build_filters</code>
       </p>
     </section>

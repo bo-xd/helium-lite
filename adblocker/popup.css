@@ -1,9 +1,9 @@
 :root {
   color-scheme: dark;
-  --bg: #0f1115;
-  --surface: #171a21;
-  --surface-2: #1f242e;
-  --border: #282e3b;
+  --bg: #0d1017;
+  --surface: #151a24;
+  --surface-2: #1d2331;
+  --border: #272f40;
   --text: #e6edf3;
   --muted: #8b949e;
   --accent: #58a6ff;
@@ -19,17 +19,17 @@
 body {
   margin: 0;
   padding: 0;
-  width: 300px;
+  width: 320px;
   background: var(--bg);
   color: var(--text);
-  font: 13px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
 
 .card {
   padding: 14px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
 }
 
 .header {
@@ -48,6 +48,7 @@ body {
   margin: 0;
   font-size: 15px;
   font-weight: 600;
+  letter-spacing: -0.01em;
 }
 
 .dot {
@@ -55,49 +56,122 @@ body {
   height: 9px;
   border-radius: 50%;
   background: var(--ok);
+  box-shadow: 0 0 8px rgba(63, 185, 80, 0.5);
 }
 
 .dot.paused {
   background: var(--warn);
+  box-shadow: 0 0 8px rgba(210, 153, 34, 0.5);
 }
 
 .dot.off {
   background: var(--danger);
+  box-shadow: none;
 }
 
-.badge {
-  font-size: 11px;
-  padding: 2px 8px;
-  border-radius: 999px;
-  background: var(--surface-2);
+.hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  background: linear-gradient(135deg, var(--surface) 0%, var(--surface-2) 100%);
   border: 1px solid var(--border);
-  color: var(--muted);
+  border-radius: 10px;
+  padding: 10px 12px;
 }
 
-.site-box {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 8px 10px;
-}
-
-.site-label {
-  font-size: 11px;
-  color: var(--muted);
+.hero-left {
+  min-width: 0;
 }
 
 .site-host {
-  font-size: 13px;
+  font-size: 13.5px;
   font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+.site-state {
+  font-size: 11px;
+  color: var(--ok);
+  font-weight: 500;
+}
+
+.site-state.paused {
+  color: var(--warn);
+}
+
+.site-state.off {
+  color: var(--danger);
+}
+
+.hero-count {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  flex-shrink: 0;
+}
+
+.count-num {
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.1;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.count-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+
+.segment-group {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 10px;
+}
+
+.segment-label {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.segmented {
+  display: flex;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 2px;
+  gap: 2px;
+}
+
+.seg-btn {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.seg-btn.active {
+  background: var(--accent);
+  color: #0b0d11;
+}
+
 .controls {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
 }
 
 .toggle-row {
@@ -108,12 +182,13 @@ body {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 8px;
-  padding: 8px 10px;
+  padding: 7px 10px;
   cursor: pointer;
 }
 
-.toggle-row.disabled {
-  opacity: 0.5;
+.toggle-row.disabled,
+.master-switch.disabled {
+  opacity: 0.45;
   pointer-events: none;
 }
 
@@ -171,8 +246,14 @@ input[type="checkbox"]:checked::after {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding-top: 4px;
+  padding-top: 6px;
   border-top: 1px solid var(--border);
+}
+
+.footer-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .meta {
@@ -184,10 +265,14 @@ input[type="checkbox"]:checked::after {
   background: none;
   border: none;
   color: var(--accent);
-  font-size: 12px;
-  font-weight: 500;
+  font-size: 11.5px;
+  font-weight: 600;
   cursor: pointer;
   padding: 2px 4px;
+}
+
+.link-btn.subtle {
+  color: var(--muted);
 }
 
 .link-btn:hover {
