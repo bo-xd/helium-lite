@@ -188,6 +188,34 @@ const BUILTIN_ADS: &[&str] = &[
     "exoclick.com",
     "juicyads.com",
     "trafficjunky.net",
+    "analyticsengine.s3.amazonaws.com",
+    "analytics.s3.amazonaws.com",
+    "gemini.yahoo.com",
+    "adtech.yahooinc.com",
+    "offerwall.yandex.net",
+    "adfox.yandex.ru",
+    "unityads.unity3d.com",
+    "auction.unityads.unity3d.com",
+    "webview.unityads.unity3d.com",
+    "config.unityads.unity3d.com",
+    "adserver.unityads.unity3d.com",
+    "bdapi-ads.realmemobile.com",
+    "bdapi-in-ads.realmemobile.com",
+    "adsfs.oppomobile.com",
+    "ads.oppomobile.com",
+    "adx.ads.oppomobile.com",
+    "ck.ads.oppomobile.com",
+    "data.ads.oppomobile.com",
+    "iadsdk.apple.com",
+    "api-adservices.apple.com",
+];
+
+const BUILTIN_AD_PATHS: &[&str] = &[
+    "/pagead.js",
+    "/widget/ads.js",
+    "/js/pagead.js",
+    "/js/widget/ads.js",
+    "/pagead/js/",
 ];
 
 const BUILTIN_PRIVACY: &[&str] = &[
@@ -275,6 +303,45 @@ const BUILTIN_PRIVACY: &[&str] = &[
     "bounceexchange.com",
     "klaviyo.com",
     "attentivemobile.com",
+    "browser.sentry-cdn.com",
+    "app.getsentry.com",
+    "ads-api.twitter.com",
+    "events.reddit.com",
+    "ads-api.tiktok.com",
+    "ads-sg.tiktok.com",
+    "analytics-sg.tiktok.com",
+    "business-api.tiktok.com",
+    "log.byteoversea.com",
+    "geo.yahoo.com",
+    "udcm.yahoo.com",
+    "analytics.query.yahoo.com",
+    "log.fc.yahoo.com",
+    "extmaps-api.yandex.net",
+    "appmetrica.yandex.ru",
+    "adfstat.yandex.ru",
+    "metrika.yandex.ru",
+    "iot-eu-logser.realme.com",
+    "iot-logser.realme.com",
+    "mistat.xiaomi.com",
+    "data.mistat.xiaomi.com",
+    "data.mistat.india.xiaomi.com",
+    "data.mistat.rus.xiaomi.com",
+    "mistat.india.xiaomi.com",
+    "mistat.rus.xiaomi.com",
+    "tracking.rus.miui.com",
+    "metrics.data.hicloud.com",
+    "metrics2.data.hicloud.com",
+    "grs.hicloud.com",
+    "logservice.hicloud.com",
+    "logservice1.hicloud.com",
+    "logbak.hicloud.com",
+    "click.oneplus.cn",
+    "smetrics.samsung.com",
+    "nmetrics.samsung.com",
+    "analytics-api.samsunghealthcn.com",
+    "books-analytics-events.apple.com",
+    "weather-analytics-events.apple.com",
+    "notes-analytics-events.apple.com",
 ];
 
 const BUILTIN_MALWARE: &[&str] = &[
@@ -309,6 +376,13 @@ const BUILTIN_COSMETIC_GLOBAL: &[&str] = &[
     ".ad-wrapper",
     ".ad-slot",
     ".ad-unit",
+    ".adsbox",
+    ".textads",
+    ".banner_ads",
+    ".banner-ads",
+    ".adbox",
+    ".adbox-wrapper",
+    ".adSocial",
     ".advertisement",
     ".sponsored-content",
     "#taboola-below-article-thumbnails",
@@ -792,6 +866,18 @@ fn build_category(
             resource_types: default_types.to_vec(),
         })
         .collect();
+
+    if name == "ads" {
+        for &p in BUILTIN_AD_PATHS {
+            rules.push(ParsedRule {
+                action_type: "block",
+                priority: 1,
+                url_filter: p.to_string(),
+                domain_type: None,
+                resource_types: default_types.to_vec(),
+            });
+        }
+    }
 
     if !offline {
         for (src, url) in urls {

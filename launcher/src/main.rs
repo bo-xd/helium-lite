@@ -419,22 +419,6 @@ fn repo_root() -> PathBuf {
         .to_path_buf()
 }
 
-fn adblocker_dir() -> PathBuf {
-    let local_share = home_dir().join(".local/share/kestrel/adblocker");
-    if local_share.join("manifest.json").is_file() {
-        return local_share;
-    }
-    repo_root().join("adblocker")
-}
-
-fn ui_component_dir(sub: &str) -> PathBuf {
-    let local_share = home_dir().join(".local/share/kestrel/ui").join(sub);
-    if local_share.join("manifest.json").is_file() {
-        return local_share;
-    }
-    repo_root().join("ui").join(sub)
-}
-
 fn import_script() -> PathBuf {
     if let Some(found) = which("kestrel-import") {
         return found;
@@ -1069,31 +1053,9 @@ fn build_flags(cfg: &Config, profile_dir: &Path, cache_dir: &Path) -> Vec<String
         flags.push("--disable-webgl".to_string());
     }
 
-    let mut load_exts: Vec<String> = Vec::new();
-    let adb = adblocker_dir();
-    if cfg.adblocker && adb.join("manifest.json").is_file() {
-        load_exts.push(adb.display().to_string());
-    }
-    if cfg.custom_ui {
-        for sub in ["newtab", "theme"] {
-            let dir = ui_component_dir(sub);
-            if dir.join("manifest.json").is_file() {
-                load_exts.push(dir.display().to_string());
-            }
-        }
-    }
-
-    if !load_exts.is_empty() {
-        let joined = load_exts.join(",");
-        flags.push(format!("--load-extension={joined}"));
-        if !cfg.extension_support {
-            flags.push(format!("--disable-extensions-except={joined}"));
-        }
-    } else if !cfg.extension_support {
+    if !cfg.extension_support {
         flags.push("--disable-extensions".to_string());
-    }
-
-    if cfg.extension_support {
+    } else {
         flags.push("--extension-mime-request-handling=always-prompt-for-install".to_string());
     }
 
@@ -1128,10 +1090,6 @@ fn apply_flatpak_filesystems(
             format!("--filesystem={}", profile_dir.display()),
             format!("--filesystem={}", cache_dir.display()),
         ];
-        let adb = adblocker_dir();
-        if cfg.adblocker && adb.join("manifest.json").is_file() {
-            out.push(format!("--filesystem={}", adb.display()));
-        }
         if cfg.widevine_drm {
             if let Some(wv) = resolve_widevine_path(&cfg.widevine_path) {
                 out.push(format!("--filesystem={}:ro", wv.display()));

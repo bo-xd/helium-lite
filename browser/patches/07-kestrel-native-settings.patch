@@ -1,0 +1,642 @@
+--- a/chrome/browser/ui/toolbar/chrome_location_bar_model_delegate.cc
++++ b/chrome/browser/ui/toolbar/chrome_location_bar_model_delegate.cc
+@@ -122,8 +122,11 @@
+   }
+ 
+   const auto is_ntp = [](const GURL& url) {
+-    return (url.SchemeIs(content::kChromeUIScheme) &&
+-            url.host() == chrome::kChromeUINewTabHost) ||
++    return ((url.SchemeIs(content::kChromeUIScheme) || url.SchemeIs("kestrel")) &&
++            (url.host() == chrome::kChromeUINewTabHost ||
++             url.host() == chrome::kChromeUINewTabPageHost)) ||
++           (url.SchemeIs(extensions::kExtensionScheme) &&
++            url.path().find("newtab.html") != std::string::npos) ||
+            url.spec() == chrome::kChromeUISplitViewNewTabPageURL;
+   };
+ 
+--- a/chrome/browser/resources/settings/page_visibility.ts
++++ b/chrome/browser/resources/settings/page_visibility.ts
+@@ -44,7 +44,7 @@
+ 
+ function createPageVisibility(): PageVisibility|undefined {
+   if (!loadTimeData.getBoolean('isGuest')) {
+-    return {people: false, safetyHub: false, ai: false};
++    return {people: true, safetyHub: false, ai: false};
+   }
+ 
+   // <if expr="not is_chromeos">
+--- a/chrome/browser/resources/settings/settings_menu/settings_menu.html
++++ b/chrome/browser/resources/settings/settings_menu/settings_menu.html
+@@ -7,7 +7,7 @@
+             ?hidden="${this.shouldHideMenuItem_(this.pageVisibility_?.people)}"
+             class="cr-nav-menu-item">
+ <if expr="not _google_chrome">
+-          <cr-icon icon="settings:person"></cr-icon>
++          <cr-icon icon="settings:security"></cr-icon>
+ </if>
+ <if expr="_google_chrome">
+           <cr-icon icon="settings-internal:google-g"></cr-icon>
+--- a/chrome/browser/resources/settings/settings_main/settings_main.html
++++ b/chrome/browser/resources/settings/settings_main/settings_main.html
+@@ -14,10 +14,134 @@
+ <cr-view-manager id="switcher" ?show-all="${this.shouldShowAll_()}">
+   ${this.showPage_(this.pageVisibility_?.people) ? html`
+     <div slot="view" id="people">
+-      ${this.renderPlugin_(this.routes_.PEOPLE) ? html`
+-        <settings-people-page-index ?in-search-mode="${this.inSearchMode_}">
+-        </settings-people-page-index>
+-      ` : ''}
++      <div class="kestrel-native-wrap" ?hidden="${this.inSearchMode_}">
++        <div class="kestrel-header">
++          <div>
++            <h2 class="kestrel-title">Kestrel Browser Settings</h2>
++            <div class="kestrel-subtitle">Privacy-first, ultra-low-RAM configuration persisted to ~/.config/kestrel/config.json</div>
++          </div>
++          <div class="kestrel-actions">
++            <span class="kestrel-status">${this.kestrelStatus_}</span>
++            <button class="kestrel-btn" @click="${this.onKestrelResetClick_}">Reset Defaults</button>
++          </div>
++        </div>
++
++        <div class="kestrel-section-label">PRIVACY &amp; SECURITY</div>
++        <div class="kestrel-card">
++          <div class="kestrel-row">
++            <div class="kestrel-meta">
++              <div class="kestrel-name">Strict Security &amp; Site Isolation</div>
++              <div class="kestrel-desc">Enforce --site-per-process, HTTPS-First, 3rd-party cookie blocking, Do Not Track, and disable Privacy Sandbox / WebUSB / WebBluetooth</div>
++            </div>
++            <input type="checkbox" class="kestrel-toggle" data-key="strict_security" .checked="${this.kestrelConfig_.strict_security}" @change="${this.onKestrelToggleChange_}">
++          </div>
++          <div class="kestrel-row">
++            <div class="kestrel-meta">
++              <div class="kestrel-name">DNS-over-HTTPS (DoH) Provider</div>
++              <div class="kestrel-desc">Encrypted DNS resolver configured in browser preferences</div>
++            </div>
++            <select class="kestrel-select" data-key="doh_provider" .value="${this.kestrelConfig_.doh_provider}" @change="${this.onKestrelSelectChange_}">
++              <option value="quad9">Quad9 (9.9.9.9 — Malware Blocking)</option>
++              <option value="cloudflare">Cloudflare (1.1.1.1)</option>
++              <option value="mullvad">Mullvad Privacy DNS</option>
++              <option value="off">Off (System DNS)</option>
++            </select>
++          </div>
++          <div class="kestrel-row">
++            <div class="kestrel-meta">
++              <div class="kestrel-name">WebRTC IP Leak Protection</div>
++              <div class="kestrel-desc">Prevent WebRTC from leaking local/VPN IP addresses (disable_non_proxied_udp)</div>
++            </div>
++            <input type="checkbox" class="kestrel-toggle" data-key="webrtc_privacy" .checked="${this.kestrelConfig_.webrtc_privacy}" @change="${this.onKestrelToggleChange_}">
++          </div>
++          <div class="kestrel-row">
++            <div class="kestrel-meta">
++              <div class="kestrel-name">Default Address Bar Search Engine</div>
++              <div class="kestrel-desc">Primary search provider for omnibox queries</div>
++            </div>
++            <select class="kestrel-select" data-key="search_engine" .value="${this.kestrelConfig_.search_engine}" @change="${this.onKestrelSelectChange_}">
++              <option value="duckduckgo">DuckDuckGo</option>
++              <option value="brave">Brave Search</option>
++              <option value="startpage">Startpage</option>
++              <option value="google">Google</option>
++            </select>
++          </div>
++        </div>
++
++        <div class="kestrel-section-label">LOW RAM &amp; PERFORMANCE</div>
++        <div class="kestrel-card">
++          <div class="kestrel-row">
++            <div class="kestrel-meta">
++              <div class="kestrel-name">RAM Profile Preset</div>
++              <div class="kestrel-desc">Ultra (4 renderers / 512 MB V8 heap) or Balanced (6 renderers / 768 MB V8 heap)</div>
++            </div>
++            <select class="kestrel-select" data-key="ram_profile" .value="${this.kestrelConfig_.ram_profile}" @change="${this.onKestrelSelectChange_}">
++              <option value="ultra">Ultra Low RAM (4 renderers / 512 MB)</option>
++              <option value="balanced">Balanced (6 renderers / 768 MB)</option>
++            </select>
++          </div>
++          <div class="kestrel-row">
++            <div class="kestrel-meta">
++              <div class="kestrel-name">Aggressive Tab Sleeping &amp; Memory Saver</div>
++              <div class="kestrel-desc">Discard inactive background tabs and disable background networking &amp; preloading</div>
++            </div>
++            <input type="checkbox" class="kestrel-toggle" data-key="tab_sleeping" .checked="${this.kestrelConfig_.tab_sleeping}" @change="${this.onKestrelToggleChange_}">
++          </div>
++          <div class="kestrel-row">
++            <div class="kestrel-meta">
++              <div class="kestrel-name">Renderer Process Limit</div>
++              <div class="kestrel-desc">Maximum concurrent renderer processes (1–32)</div>
++            </div>
++            <input type="number" class="kestrel-num" min="1" max="32" data-key="renderer_process_limit" .value="${String(this.kestrelConfig_.renderer_process_limit)}" @change="${this.onKestrelNumberChange_}">
++          </div>
++          <div class="kestrel-row">
++            <div class="kestrel-meta">
++              <div class="kestrel-name">V8 Max Heap per Tab (MB)</div>
++              <div class="kestrel-desc">Maximum JavaScript V8 old-space heap per renderer process (128–4096 MB)</div>
++            </div>
++            <input type="number" class="kestrel-num" min="128" max="4096" step="64" data-key="v8_max_old_space_mb" .value="${String(this.kestrelConfig_.v8_max_old_space_mb)}" @change="${this.onKestrelNumberChange_}">
++          </div>
++          <div class="kestrel-row">
++            <div class="kestrel-meta">
++              <div class="kestrel-name">Hardware Video Acceleration (VA-API + WebGL)</div>
++              <div class="kestrel-desc">GPU rasterization, zero-copy, and VA-API hardware video decoding for YouTube</div>
++            </div>
++            <input type="checkbox" class="kestrel-toggle" data-key="hardware_accel" .checked="${this.kestrelConfig_.hardware_accel}" @change="${this.onKestrelToggleChange_}">
++          </div>
++        </div>
++
++        <div class="kestrel-section-label">KESTREL SHIELD &amp; MEDIA</div>
++        <div class="kestrel-card">
++          <div class="kestrel-row">
++            <div class="kestrel-meta">
++              <div class="kestrel-name">Kestrel Shield (uBlock / Brave-Grade Ad &amp; Tracker Blocker)</div>
++              <div class="kestrel-desc">28,724 static DNR rules (uAssets + EasyList + EasyPrivacy), 3,300 cosmetic selectors, YouTube ad pruning &amp; anti-fingerprinting</div>
++            </div>
++            <input type="checkbox" class="kestrel-toggle" data-key="adblocker" .checked="${this.kestrelConfig_.adblocker}" @change="${this.onKestrelToggleChange_}">
++          </div>
++          <div class="kestrel-row">
++            <div class="kestrel-meta">
++              <div class="kestrel-name">Widevine DRM</div>
++              <div class="kestrel-desc">Enable Widevine CDM (4.10.3050.0) for encrypted media playback (Spotify, Netflix, etc.)</div>
++            </div>
++            <input type="checkbox" class="kestrel-toggle" data-key="widevine_drm" .checked="${this.kestrelConfig_.widevine_drm}" @change="${this.onKestrelToggleChange_}">
++          </div>
++          <div class="kestrel-row">
++            <div class="kestrel-meta">
++              <div class="kestrel-name">Extension &amp; Chrome Web Store Support</div>
++              <div class="kestrel-desc">Allow installing .crx extensions from the Chrome Web Store</div>
++            </div>
++            <input type="checkbox" class="kestrel-toggle" data-key="extension_support" .checked="${this.kestrelConfig_.extension_support}" @change="${this.onKestrelToggleChange_}">
++          </div>
++          <div class="kestrel-row">
++            <div class="kestrel-meta">
++              <div class="kestrel-name">Helium-Minimalist New Tab &amp; Matte Graphite Theme</div>
++              <div class="kestrel-desc">Load Kestrel's matte graphite theme and minimal shortcut New Tab page</div>
++            </div>
++            <input type="checkbox" class="kestrel-toggle" data-key="custom_ui" .checked="${this.kestrelConfig_.custom_ui}" @change="${this.onKestrelToggleChange_}">
++          </div>
++        </div>
++      </div>
+     </div>
+   ` : ''}
+ 
+--- a/chrome/browser/resources/settings/settings_main/settings_main.css
++++ b/chrome/browser/resources/settings/settings_main/settings_main.css
+@@ -41,3 +41,120 @@
+ cr-view-manager [hidden-by-search] {
+   display: none;
+ }
++
++.kestrel-native-wrap {
++  color: #e6e9ef;
++  margin: 24px auto 48px;
++  max-width: 680px;
++  padding: 0 20px;
++}
++
++.kestrel-header {
++  align-items: center;
++  border-bottom: 1px solid #232730;
++  display: flex;
++  justify-content: space-between;
++  margin-bottom: 18px;
++  padding-bottom: 14px;
++}
++
++.kestrel-title {
++  color: #e6e9ef;
++  font-size: 18px;
++  font-weight: 600;
++  margin: 0;
++}
++
++.kestrel-subtitle {
++  color: #8b93a1;
++  font-size: 12px;
++  margin-top: 4px;
++}
++
++.kestrel-actions {
++  align-items: center;
++  display: flex;
++  gap: 12px;
++}
++
++.kestrel-status {
++  color: #e09f3e;
++  font-size: 12px;
++}
++
++.kestrel-section-label {
++  color: #e09f3e;
++  font-size: 11px;
++  font-weight: 600;
++  letter-spacing: 0.06em;
++  margin: 20px 0 8px;
++}
++
++.kestrel-card {
++  background: #181b21;
++  border: 1px solid #232730;
++  border-radius: 6px;
++}
++
++.kestrel-row {
++  align-items: center;
++  border-bottom: 1px solid #232730;
++  display: flex;
++  gap: 16px;
++  justify-content: space-between;
++  padding: 12px 16px;
++}
++
++.kestrel-row:last-child {
++  border-bottom: none;
++}
++
++.kestrel-meta {
++  flex: 1;
++}
++
++.kestrel-name {
++  color: #e6e9ef;
++  font-size: 13px;
++  font-weight: 500;
++}
++
++.kestrel-desc {
++  color: #8b93a1;
++  font-size: 12px;
++  margin-top: 2px;
++}
++
++.kestrel-select,
++.kestrel-num,
++.kestrel-btn {
++  background: #111317;
++  border: 1px solid #232730;
++  border-radius: 4px;
++  color: #e6e9ef;
++  font-size: 12px;
++  padding: 6px 10px;
++}
++
++.kestrel-num {
++  text-align: right;
++  width: 72px;
++}
++
++.kestrel-btn {
++  cursor: pointer;
++}
++
++.kestrel-btn:hover,
++.kestrel-select:focus,
++.kestrel-num:focus {
++  border-color: #e09f3e;
++  outline: none;
++}
++
++.kestrel-toggle {
++  accent-color: #e09f3e;
++  cursor: pointer;
++  height: 18px;
++  width: 18px;
++}
+--- a/chrome/browser/resources/settings/settings_main/settings_main.ts
++++ b/chrome/browser/resources/settings/settings_main/settings_main.ts
+@@ -27,6 +27,23 @@
+ import {getInstance as getAnnouncerInstance} from 'chrome://resources/cr_elements/cr_a11y_announcer/cr_a11y_announcer.js';
+ import type {CrViewManagerElement} from 'chrome://resources/cr_elements/cr_view_manager/cr_view_manager.js';
+ import {assert} from 'chrome://resources/js/assert.js';
++import {sendWithPromise} from 'chrome://resources/js/cr.js';
++
++export interface KestrelConfig {
++  strict_security: boolean;
++  doh_provider: string;
++  webrtc_privacy: boolean;
++  search_engine: string;
++  ram_profile: string;
++  tab_sleeping: boolean;
++  renderer_process_limit: number;
++  v8_max_old_space_mb: number;
++  hardware_accel: boolean;
++  adblocker: boolean;
++  widevine_drm: boolean;
++  extension_support: boolean;
++  custom_ui: boolean;
++}
+ import {EventTracker} from 'chrome://resources/js/event_tracker.js';
+ import {PromiseResolver} from 'chrome://resources/js/promise_resolver.js';
+ import {CrLitElement} from 'chrome://resources/lit/v3_0/lit.rollup.js';
+@@ -92,6 +109,8 @@
+       inSearchMode_: {type: Boolean},
+       showNoResultsFound_: {type: Boolean},
+       showResetProfileBanner_: {type: Boolean},
++      kestrelConfig_: {type: Object},
++      kestrelStatus_: {type: String},
+       toolbarSpinnerActive: {
+         type: Boolean,
+         notify: true,
+@@ -107,6 +126,22 @@
+   protected accessor showResetProfileBanner_: boolean =
+       loadTimeData.getBoolean('showResetProfileBanner');
+   accessor toolbarSpinnerActive: boolean = false;
++  protected accessor kestrelConfig_: KestrelConfig = {
++    strict_security: true,
++    doh_provider: 'quad9',
++    webrtc_privacy: true,
++    search_engine: 'duckduckgo',
++    ram_profile: 'ultra',
++    tab_sleeping: true,
++    renderer_process_limit: 4,
++    v8_max_old_space_mb: 512,
++    hardware_accel: true,
++    adblocker: true,
++    widevine_drm: true,
++    extension_support: true,
++    custom_ui: true,
++  };
++  protected accessor kestrelStatus_: string = '';
+ 
+   private eventTracker_: EventTracker = new EventTracker();
+   private pendingViewSwitching_: PromiseResolver<void> = new PromiseResolver();
+@@ -122,6 +157,11 @@
+ 
+     // Request loading of the lazy loaded module within an idle callback.
+     requestIdleCallback(() => ensureLazyLoaded());
++    sendWithPromise('kestrelGetConfig').then((cfg: unknown) => {
++      if (cfg) {
++        this.kestrelConfig_ = cfg as KestrelConfig;
++      }
++    }).catch(() => {});
+   }
+ 
+   override disconnectedCallback() {
+@@ -310,6 +350,46 @@
+         this.lastRoute_ !== routes.ABOUT && !this.lastRoute_.isSubpage();
+   }
+ 
++  protected onKestrelToggleChange_(e: Event) {
++    const input = e.target as HTMLInputElement;
++    const key = input.dataset['key'];
++    if (!key) return;
++    sendWithPromise('kestrelSetConfig', key, input.checked).then((cfg: unknown) => {
++      if (cfg) this.kestrelConfig_ = cfg as KestrelConfig;
++      this.kestrelStatus_ = 'Saved (restart Kestrel for launch flags)';
++    });
++  }
++
++  protected onKestrelSelectChange_(e: Event) {
++    const sel = e.target as HTMLSelectElement;
++    const key = sel.dataset['key'];
++    if (!key) return;
++    sendWithPromise('kestrelSetConfig', key, sel.value).then((cfg: unknown) => {
++      if (cfg) this.kestrelConfig_ = cfg as KestrelConfig;
++      this.kestrelStatus_ = 'Saved (restart Kestrel for launch flags)';
++    });
++  }
++
++  protected onKestrelNumberChange_(e: Event) {
++    const input = e.target as HTMLInputElement;
++    const key = input.dataset['key'];
++    if (!key) return;
++    const val = Number(input.value);
++    if (!Number.isNaN(val)) {
++      sendWithPromise('kestrelSetConfig', key, val).then((cfg: unknown) => {
++        if (cfg) this.kestrelConfig_ = cfg as KestrelConfig;
++        this.kestrelStatus_ = 'Saved (restart Kestrel for launch flags)';
++      });
++    }
++  }
++
++  protected onKestrelResetClick_() {
++    sendWithPromise('kestrelResetConfig').then((cfg: unknown) => {
++      if (cfg) this.kestrelConfig_ = cfg as KestrelConfig;
++      this.kestrelStatus_ = 'Reset to defaults';
++    });
++  }
++
+   protected shouldShowAll_(): boolean {
+     return this.inSearchMode_ && !!this.lastRoute_ &&
+         !this.lastRoute_.isSubpage();
+--- a/chrome/browser/ui/webui/settings/settings_ui.cc
++++ b/chrome/browser/ui/webui/settings/settings_ui.cc
+@@ -13,6 +13,11 @@
+ #include <vector>
+ 
+ #include "base/feature_list.h"
++#include "base/files/file_path.h"
++#include "base/files/file_util.h"
++#include "base/json/json_reader.h"
++#include "base/json/json_writer.h"
++#include "base/threading/thread_restrictions.h" 
+ #include "base/memory/ptr_util.h"
+ #include "base/strings/strcat.h"
+ #include "base/values.h"
+@@ -225,6 +230,115 @@
+ 
+ namespace settings {
+ 
++class KestrelSettingsHandler : public SettingsPageUIHandler {
++ public:
++  KestrelSettingsHandler() = default;
++  ~KestrelSettingsHandler() override = default;
++
++  void RegisterMessages() override {
++    web_ui()->RegisterMessageCallback(
++        "kestrelGetConfig",
++        base::BindRepeating(&KestrelSettingsHandler::HandleGetConfig,
++                            base::Unretained(this)));
++    web_ui()->RegisterMessageCallback(
++        "kestrelSetConfig",
++        base::BindRepeating(&KestrelSettingsHandler::HandleSetConfig,
++                            base::Unretained(this)));
++    web_ui()->RegisterMessageCallback(
++        "kestrelResetConfig",
++        base::BindRepeating(&KestrelSettingsHandler::HandleResetConfig,
++                            base::Unretained(this)));
++  }
++
++  void OnJavascriptAllowed() override {}
++  void OnJavascriptDisallowed() override {}
++
++ private:
++  static base::FilePath GetConfigPath() {
++    return base::GetHomeDir().Append(".config/kestrel/config.json");
++  }
++
++  static base::DictValue DefaultConfig() {
++    base::DictValue d;
++    d.Set("browser_binary", "auto");
++    d.Set("profile_dir", "~/.config/kestrel/profile");
++    d.Set("cache_dir", "~/.cache/kestrel");
++    d.Set("search_engine", "duckduckgo");
++    d.Set("ram_profile", "ultra");
++    d.Set("strict_security", true);
++    d.Set("doh_provider", "quad9");
++    d.Set("webrtc_privacy", true);
++    d.Set("tab_sleeping", true);
++    d.Set("hardware_accel", true);
++    d.Set("widevine_drm", true);
++    d.Set("adblocker", true);
++    d.Set("custom_ui", true);
++    d.Set("extension_support", true);
++    d.Set("renderer_process_limit", 4);
++    d.Set("v8_max_old_space_mb", 512);
++    d.Set("widevine_path", "auto");
++    d.Set("extra_flags", base::ListValue());
++    return d;
++  }
++
++  static base::DictValue LoadConfig() {
++    base::ScopedAllowBlockingForTesting allow_blocking;
++    base::DictValue cfg = DefaultConfig();
++    std::string raw;
++    if (base::ReadFileToString(GetConfigPath(), &raw)) {
++      auto parsed = base::JSONReader::Read(raw, base::JSON_PARSE_RFC);
++      if (parsed && parsed->is_dict()) {
++        cfg.Merge(std::move(parsed->GetDict()));
++      }
++    }
++    return cfg;
++  }
++
++  static void SaveConfig(const base::DictValue& cfg) {
++    base::ScopedAllowBlockingForTesting allow_blocking;
++    base::FilePath path = GetConfigPath();
++    base::CreateDirectory(path.DirName());
++    std::string out;
++    base::JSONWriter::WriteWithOptions(
++        cfg, base::JSONWriter::OPTIONS_PRETTY_PRINT, &out);
++    base::WriteFile(path, out);
++  }
++
++  void HandleGetConfig(const base::ListValue& args) {
++    AllowJavascript();
++    if (args.empty()) return;
++    ResolveJavascriptCallback(args[0], LoadConfig());
++  }
++
++  void HandleSetConfig(const base::ListValue& args) {
++    AllowJavascript();
++    if (args.size() < 3 || !args[1].is_string()) return;
++    const std::string& key = args[1].GetString();
++    base::DictValue cfg = LoadConfig();
++    cfg.Set(key, args[2].Clone());
++    if (key == "ram_profile" && args[2].is_string()) {
++      if (args[2].GetString() == "ultra") {
++        cfg.Set("renderer_process_limit", 4);
++        cfg.Set("v8_max_old_space_mb", 512);
++      } else {
++        cfg.Set("renderer_process_limit", 6);
++        cfg.Set("v8_max_old_space_mb", 768);
++      }
++    }
++    SaveConfig(cfg);
++    ResolveJavascriptCallback(args[0], cfg);
++  }
++
++  void HandleResetConfig(const base::ListValue& args) {
++    AllowJavascript();
++    if (args.empty()) return;
++    base::DictValue cfg = DefaultConfig();
++    SaveConfig(cfg);
++    ResolveJavascriptCallback(args[0], cfg);
++  }
++};
++
++
+ using optimization_guide::UserVisibleFeatureKey;
+ 
+ namespace {
+@@ -505,6 +619,8 @@
+ #endif
+ 
+   AddLocalizedStrings(html_source, profile, web_ui->GetWebContents());
++  html_source->AddString("peoplePageTitle", "Kestrel");
++  AddSettingsPageUIHandler(std::make_unique<KestrelSettingsHandler>());
+   AddSecurityData(html_source);
+ 
+   ManagedUIHandler::Initialize(web_ui, html_source);
+--- a/chrome/browser/extensions/component_loader.cc
++++ b/chrome/browser/extensions/component_loader.cc
+@@ -11,6 +11,7 @@
+ #include "base/command_line.h"
+ #include "base/feature_list.h"
+ #include "base/files/file_util.h"
++#include "base/threading/thread_restrictions.h"
+ #include "base/functional/bind.h"
+ #include "base/functional/callback.h"
+ #include "base/functional/callback_helpers.h"
+@@ -239,7 +240,10 @@
+     CHECK(base::PathService::Get(chrome::DIR_RESOURCES, &root_directory));
+     root_directory = root_directory.Append(directory);
+   }
+-  extension_id = GenerateId(manifest);
++  extension_id = TryGenerateId(manifest);
++  if (extension_id.empty()) {
++    extension_id = crx_file::id_util::GenerateIdForPath(root_directory);
++  }
+ }
+ 
+ ComponentLoader::ComponentExtensionInfo::ComponentExtensionInfo(
+@@ -403,7 +407,11 @@
+                << "'. " << error;
+     return std::string();
+   }
+-  Remove(GenerateId(*manifest));
++  ExtensionId id = TryGenerateId(*manifest);
++  if (id.empty()) {
++    id = crx_file::id_util::GenerateIdForPath(absolute_path);
++  }
++  Remove(id);
+ 
+   // We don't check component extensions loaded by path because this is only
+   // used by developers for testing.
+@@ -666,7 +674,9 @@
+     std::u16string* error) {
+   // TODO(abarth): We should REQUIRE_MODERN_MANIFEST_VERSION once we've updated
+   //               our component extensions to the new manifest version.
+-  int flags = Extension::REQUIRE_KEY;
++  int flags = info.manifest.FindString(manifest_keys::kPublicKey)
++                  ? Extension::REQUIRE_KEY
++                  : Extension::NO_FLAGS;
+ 
+ #if BUILDFLAG(IS_CHROMEOS)
+   // ChromeOS component extension (GoogleTTS) needs to use symlinks to share
+@@ -718,6 +728,37 @@
+     Add(pdf_extension_util::GetManifest(),
+         base::FilePath(FILE_PATH_LITERAL("pdf")));
+ #endif  // BUILDFLAG(ENABLE_PDF)
++  }
++
++  if (!skip_session_components) {
++    base::ScopedAllowBlockingForTesting allow_blocking;
++    base::FilePath home = base::GetHomeDir();
++    bool load_adblocker = true;
++    bool load_custom_ui = true;
++    std::string cfg_raw;
++    if (base::ReadFileToString(home.Append(".config/kestrel/config.json"), &cfg_raw)) {
++      auto parsed = base::JSONReader::Read(cfg_raw, base::JSON_PARSE_RFC);
++      if (parsed && parsed->is_dict()) {
++        load_adblocker = parsed->GetDict().FindBool("adblocker").value_or(true);
++        load_custom_ui = parsed->GetDict().FindBool("custom_ui").value_or(true);
++      }
++    }
++    if (load_adblocker) {
++      base::FilePath shield_dir = home.Append(".local/share/kestrel/adblocker");
++      if (base::PathExists(shield_dir.Append("manifest.json"))) {
++        AddOrReplace(shield_dir);
++      }
++    }
++    if (load_custom_ui) {
++      base::FilePath newtab_dir = home.Append(".local/share/kestrel/ui/newtab");
++      if (base::PathExists(newtab_dir.Append("manifest.json"))) {
++        AddOrReplace(newtab_dir);
++      }
++      base::FilePath theme_dir = home.Append(".local/share/kestrel/ui/theme");
++      if (base::PathExists(theme_dir.Append("manifest.json"))) {
++        AddOrReplace(theme_dir);
++      }
++    }
+   }
+ 
+   AddDefaultComponentExtensionsWithBackgroundPages(skip_session_components);

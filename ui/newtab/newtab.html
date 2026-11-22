@@ -8,40 +8,43 @@
   <link rel="stylesheet" href="newtab.css">
 </head>
 <body>
-  <a class="corner-link" href="settings.html" title="Kestrel Settings &amp; Privacy">Settings</a>
+  <main class="stage">
+    <div class="tiles-grid" id="tilesGrid" aria-label="Pinned shortcuts"></div>
+  </main>
 
-  <main class="shell">
-    <form id="searchForm" class="omnibox" autocomplete="off">
-      <svg class="crest" viewBox="0 0 32 32" width="18" height="18" aria-hidden="true">
-        <path d="M3 9 L29 4 L20 15 L28 17 L13 28 L16 17 L4 15 Z" fill="#e09f3e"/>
-      </svg>
-      <input
-        type="text"
-        id="searchInput"
-        placeholder="Search or enter address"
-        autofocus
-        spellcheck="false"
-        aria-label="Search or enter address"
-      >
-    </form>
+  <button
+    type="button"
+    id="editToggle"
+    class="pencil-btn"
+    title="Customize shortcuts"
+    aria-label="Customize shortcuts"
+    aria-expanded="false"
+  >
+    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M12 20h9"/>
+      <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/>
+    </svg>
+  </button>
 
-    <div class="meta-row">
-      <nav class="engines" id="engineTabs" aria-label="Search engine">
-        <button type="button" class="eng-tab active" data-engine="ddg">DuckDuckGo</button>
-        <button type="button" class="eng-tab" data-engine="brave">Brave</button>
-        <button type="button" class="eng-tab" data-engine="startpage">Startpage</button>
-        <button type="button" class="eng-tab" data-engine="google">Google</button>
-      </nav>
-      <div class="shortcuts-inline" id="shortcutsGrid"></div>
+  <aside id="editorPanel" class="editor-popover hidden" aria-label="Manage shortcuts">
+    <div class="editor-header">
+      <span class="editor-title" id="formHeading">Shortcuts</span>
+      <button type="button" id="closeEditor" class="icon-close" aria-label="Close">&times;</button>
     </div>
 
-    <form id="addForm" class="add-form hidden" autocomplete="off">
-      <input type="text" id="addTitle" placeholder="Label" maxlength="20" required aria-label="Shortcut label">
-      <input type="text" id="addUrl" placeholder="https://example.com" required aria-label="Shortcut URL">
-      <button type="submit" class="btn-primary">Add</button>
-      <button type="button" id="cancelAdd" class="btn-ghost">Cancel</button>
+    <ul id="editorList" class="editor-list"></ul>
+
+    <form id="shortcutForm" class="editor-form" autocomplete="off">
+      <input type="hidden" id="editIndex" value="-1">
+      <input type="text" id="inputTitle" placeholder="Name" maxlength="24" required aria-label="Shortcut name">
+      <input type="text" id="inputUrl" placeholder="https://example.com" required aria-label="Shortcut URL">
+      <div class="editor-actions">
+        <button type="submit" id="saveBtn" class="btn-primary">Add</button>
+        <button type="button" id="cancelEditBtn" class="btn-ghost hidden">Cancel</button>
+      </div>
     </form>
-  </main>
+  </aside>
+
   <script src="newtab.js"></script>
 </body>
 </html>
