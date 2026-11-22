@@ -9,14 +9,27 @@ const DEFAULT_SHORTCUTS = [
   { title: "Wikipedia", url: "https://www.wikipedia.org" }
 ];
 
-// Clean zero-network inline vector paths for common domains
+const STORAGE_DEFAULTS = {
+  shortcuts: DEFAULT_SHORTCUTS,
+  showShortcuts: true,
+  appearanceMode: "matte",
+  activeSwatch: "kestrel",
+  customBg: ""
+};
+
+// Mirrors the shortcut list in localStorage so tiles render on first paint.
+const LIST_CACHE_KEY = "kestrel-ntp-shortcuts";
+const MAX_BG_EDGE = 2560;
+const SVG_NS = "http://www.w3.org/2000/svg";
+
+// Zero-network glyphs for common sites; color null follows the theme ink.
 const DOMAIN_ICONS = {
   "youtube.com": {
     color: "#ff4e45",
     path: "M21.6 7.2a2.7 2.7 0 0 0-1.9-1.9C18 5 12 5 12 5s-6 0-7.7.3a2.7 2.7 0 0 0-1.9 1.9C2 9 2 12 2 12s0 3 .4 4.8a2.7 2.7 0 0 0 1.9 1.9C6 19 12 19 12 19s6 0 7.7-.3a2.7 2.7 0 0 0 1.9-1.9C22 15 22 12 22 12s0-3-.4-4.8ZM10 15V9l5.2 3-5.2 3Z"
   },
   "github.com": {
-    color: "#e6e9ef",
+    color: null,
     path: "M12 2a10 10 0 0 0-3.16 19.49c.5.09.68-.22.68-.48v-1.7c-2.78.6-3.37-1.34-3.37-1.34-.45-1.15-1.11-1.46-1.11-1.46-.91-.62.07-.6.07-.6 1 .07 1.53 1.03 1.53 1.03.89 1.52 2.34 1.08 2.91.83.09-.65.35-1.09.63-1.34-2.22-.25-4.56-1.11-4.56-4.94 0-1.09.39-1.98 1.03-2.68-.1-.25-.45-1.27.1-2.64 0 0 .84-.27 2.75 1.02a9.58 9.58 0 0 1 5 0c1.91-1.29 2.75-1.02 2.75-1.02.55 1.37.2 2.39.1 2.64.64.7 1.03 1.59 1.03 2.68 0 3.84-2.34 4.68-4.57 4.93.36.31.68.92.68 1.85v2.75c0 .27.18.58.69.48A10 10 0 0 0 12 2Z"
   },
   "archlinux.org": {
@@ -32,195 +45,487 @@ const DOMAIN_ICONS = {
     path: "M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v11a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 17.5v-11Zm2.5.8 5.5 4.4 5.5-4.4v-.8l-5.5 4.3L6.5 6.5v.8Z"
   },
   "wikipedia.org": {
-    color: "#e6e9ef",
+    color: null,
     path: "M3 6h3.5v1.2h-.9l2.8 7.8 2.2-5.6-1.1-2.2h-.8V6h3.8v1.2h-.8l1.8 4.4 2.1-4.4h-.9V6H18v1.2h-.8L14 14.3l1.2 2.7 3.2-9.8h-.9V6H21v1.2h-.9L15.4 19h-1.3l-2-4.6L10 19H8.7L4 7.2H3V6Z"
   }
 };
 
-const tilesGrid = document.getElementById("tilesGrid");
-const editToggle = document.getElementById("editToggle");
-const editorPanel = document.getElementById("editorPanel");
-const closeEditor = document.getElementById("closeEditor");
-const editorList = document.getElementById("editorList");
-const shortcutForm = document.getElementById("shortcutForm");
-const editIndexInput = document.getElementById("editIndex");
-const inputTitle = document.getElementById("inputTitle");
-const inputUrl = document.getElementById("inputUrl");
-const saveBtn = document.getElementById("saveBtn");
-const cancelEditBtn = document.getElementById("cancelEditBtn");
+const ICON_PATHS = {
+  edit: ["M12 20h9", "M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"],
+  remove: ["M4 7h16", "M10 11v6", "M14 11v6", "M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12", "M9 7V4h6v3"]
+};
 
-let shortcuts = [...DEFAULT_SHORTCUTS];
+const Theme = window.KestrelTheme;
+const store = typeof chrome !== "undefined" && chrome.storage && chrome.storage.local
+  ? chrome.storage.local
+  : null;
 
-function normalizeUrl(raw) {
-  const s = raw.trim();
-  if (!s) return "";
-  if (/^https?:\/\//i.test(s)) return s;
-  return "https://" + s;
+const $ = (id) => document.getElementById(id);
+const ui = {
+  tiles: $("tilesGrid"),
+  empty: $("emptyState"),
+  emptyAdd: $("emptyAdd"),
+  toggle: $("editToggle"),
+  panel: $("editorPanel"),
+  close: $("closePanel"),
+  modes: Array.from(document.querySelectorAll(".seg[data-mode]")),
+  swatches: $("swatches"),
+  bgPick: $("bgPick"),
+  bgPickLabel: $("bgPickLabel"),
+  bgInput: $("bgInput"),
+  bgRemove: $("bgRemove"),
+  bgMessage: $("bgMessage"),
+  showShortcuts: $("showShortcuts"),
+  manager: $("shortcutManager"),
+  list: $("shortcutList"),
+  addTrigger: $("addTrigger"),
+  form: $("shortcutForm"),
+  name: $("scName"),
+  url: $("scUrl"),
+  urlError: $("scUrlError"),
+  save: $("scSave"),
+  cancel: $("scCancel"),
+  settings: $("openSettings")
+};
+
+const isShortcut = (item) => item && typeof item.title === "string" && typeof item.url === "string";
+
+function readListCache() {
+  try {
+    const data = JSON.parse(localStorage.getItem(LIST_CACHE_KEY));
+    return data && Array.isArray(data.shortcuts) ? data : null;
+  } catch {
+    return null;
+  }
 }
 
-function getHost(urlStr) {
+function writeListCache() {
   try {
-    return new URL(urlStr).hostname.toLowerCase().replace(/^www\./, "");
+    localStorage.setItem(
+      LIST_CACHE_KEY,
+      JSON.stringify({ shortcuts: state.shortcuts, showShortcuts: state.showShortcuts })
+    );
+  } catch {
+    // Cache only; chrome.storage remains the source of truth.
+  }
+}
+
+const cachedTheme = Theme.cached();
+const cachedList = readListCache();
+const state = {
+  shortcuts: cachedList ? cachedList.shortcuts.filter(isShortcut) : DEFAULT_SHORTCUTS.slice(),
+  showShortcuts: cachedList ? cachedList.showShortcuts !== false : true,
+  mode: cachedTheme.mode || "matte",
+  swatch: cachedTheme.swatch || "kestrel",
+  customBg: "",
+  editIndex: -1
+};
+
+function persist(patch) {
+  if ("shortcuts" in patch || "showShortcuts" in patch) writeListCache();
+  if ("appearanceMode" in patch || "activeSwatch" in patch) Theme.cache(state.mode, state.swatch);
+  return store ? store.set(patch) : Promise.resolve();
+}
+
+function hostOf(url) {
+  try {
+    return new URL(url).hostname.toLowerCase().replace(/^www\./, "");
   } catch {
     return "";
   }
 }
 
-function findDomainIcon(urlStr) {
-  const host = getHost(urlStr);
-  if (!host) return null;
-  for (const [domain, spec] of Object.entries(DOMAIN_ICONS)) {
-    if (host === domain || host.endsWith("." + domain)) {
-      return spec;
-    }
+function toWebUrl(raw) {
+  const text = raw.trim();
+  if (!text) return null;
+  const candidate = /^[a-z][a-z0-9+.-]*:\/\//i.test(text) ? text : `https://${text}`;
+  try {
+    const url = new URL(candidate);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+    if (!url.hostname.includes(".") && url.hostname !== "localhost") return null;
+    return url.href;
+  } catch {
+    return null;
   }
-  return null;
 }
 
-function createIconNode(item) {
-  const spec = findDomainIcon(item.url);
-  if (spec) {
-    const ns = "http://www.w3.org/2000/svg";
-    const svg = document.createElementNS(ns, "svg");
+function strokeIcon(paths, size) {
+  const svg = document.createElementNS(SVG_NS, "svg");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("width", String(size));
+  svg.setAttribute("height", String(size));
+  svg.setAttribute("fill", "none");
+  svg.setAttribute("stroke", "currentColor");
+  svg.setAttribute("stroke-width", "1.8");
+  svg.setAttribute("stroke-linecap", "round");
+  svg.setAttribute("stroke-linejoin", "round");
+  svg.setAttribute("aria-hidden", "true");
+  for (const d of paths) {
+    const path = document.createElementNS(SVG_NS, "path");
+    path.setAttribute("d", d);
+    svg.appendChild(path);
+  }
+  return svg;
+}
+
+function siteIcon(item) {
+  const host = hostOf(item.url);
+  const match = host && Object.keys(DOMAIN_ICONS).find((d) => host === d || host.endsWith(`.${d}`));
+  if (match) {
+    const spec = DOMAIN_ICONS[match];
+    const svg = document.createElementNS(SVG_NS, "svg");
     svg.setAttribute("viewBox", "0 0 24 24");
-    svg.setAttribute("class", "tile-icon");
+    svg.setAttribute("class", "glyph");
     svg.setAttribute("aria-hidden", "true");
-    const path = document.createElementNS(ns, "path");
-    path.setAttribute("fill", spec.color);
+    const path = document.createElementNS(SVG_NS, "path");
+    path.setAttribute("fill", spec.color || "currentColor");
     path.setAttribute("d", spec.path);
     svg.appendChild(path);
     return svg;
   }
   const mono = document.createElement("span");
-  mono.className = "tile-mono";
-  mono.textContent = (item.title || getHost(item.url) || "?").charAt(0).toUpperCase();
+  mono.className = "mono";
+  mono.setAttribute("aria-hidden", "true");
+  mono.textContent = (item.title.trim() || host || "?").charAt(0).toUpperCase();
   return mono;
 }
 
-function saveShortcuts() {
-  if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
-    chrome.storage.local.set({ shortcuts });
-  }
+function iconButton(kind, label, onClick) {
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = kind === "remove" ? "icon-btn danger" : "icon-btn";
+  btn.setAttribute("aria-label", label);
+  btn.title = label;
+  btn.appendChild(strokeIcon(ICON_PATHS[kind], 15));
+  btn.addEventListener("click", onClick);
+  return btn;
 }
 
-function resetForm() {
-  editIndexInput.value = "-1";
-  inputTitle.value = "";
-  inputUrl.value = "";
-  saveBtn.textContent = "Add";
-  cancelEditBtn.classList.add("hidden");
-}
+/* Rendering */
 
-function renderAll() {
-  tilesGrid.textContent = "";
-  editorList.textContent = "";
+function renderTiles() {
+  ui.tiles.textContent = "";
+  const hasItems = state.shortcuts.length > 0;
+  ui.tiles.hidden = !state.showShortcuts || !hasItems;
+  ui.empty.hidden = !state.showShortcuts || hasItems;
+  if (ui.tiles.hidden) return;
 
-  shortcuts.forEach((item, idx) => {
-    const a = document.createElement("a");
-    a.className = "tile-item";
-    a.href = item.url;
+  const frag = document.createDocumentFragment();
+  for (const item of state.shortcuts) {
+    const tile = document.createElement("a");
+    tile.className = "tile";
+    tile.href = item.url;
 
-    const box = document.createElement("span");
-    box.className = "tile-box";
-    box.appendChild(createIconNode(item));
+    const face = document.createElement("span");
+    face.className = "tile-face";
+    face.appendChild(siteIcon(item));
 
     const label = document.createElement("span");
     label.className = "tile-label";
     label.textContent = item.title;
 
-    a.append(box, label);
-    tilesGrid.appendChild(a);
+    tile.append(face, label);
+    frag.appendChild(tile);
+  }
+  ui.tiles.appendChild(frag);
+}
 
-    const li = document.createElement("li");
-    li.className = "editor-row";
+function renderList() {
+  ui.list.textContent = "";
+  const frag = document.createDocumentFragment();
+  state.shortcuts.forEach((item, index) => {
+    const row = document.createElement("li");
+    row.className = "sc-row";
 
+    const icon = document.createElement("span");
+    icon.className = "sc-icon";
+    icon.appendChild(siteIcon(item));
+
+    const text = document.createElement("div");
+    text.className = "sc-text";
     const name = document.createElement("span");
-    name.className = "editor-row-name";
+    name.className = "sc-name";
     name.textContent = item.title;
+    const host = document.createElement("span");
+    host.className = "sc-host";
+    host.textContent = hostOf(item.url);
+    text.append(name, host);
 
-    const btns = document.createElement("div");
-    btns.className = "editor-row-btns";
+    const actions = document.createElement("div");
+    actions.className = "sc-actions";
+    actions.append(
+      iconButton("edit", `Edit ${item.title}`, () => openForm(index)),
+      iconButton("remove", `Remove ${item.title}`, () => removeShortcut(index))
+    );
 
-    const editBtn = document.createElement("button");
-    editBtn.type = "button";
-    editBtn.className = "row-btn";
-    editBtn.textContent = "Edit";
-    editBtn.addEventListener("click", () => {
-      editIndexInput.value = String(idx);
-      inputTitle.value = item.title;
-      inputUrl.value = item.url;
-      saveBtn.textContent = "Save";
-      cancelEditBtn.classList.remove("hidden");
-      inputTitle.focus();
-    });
-
-    const delBtn = document.createElement("button");
-    delBtn.type = "button";
-    delBtn.className = "row-btn del";
-    delBtn.textContent = "Remove";
-    delBtn.addEventListener("click", () => {
-      shortcuts.splice(idx, 1);
-      saveShortcuts();
-      resetForm();
-      renderAll();
-    });
-
-    btns.append(editBtn, delBtn);
-    li.append(name, btns);
-    editorList.appendChild(li);
+    row.append(icon, text, actions);
+    frag.appendChild(row);
   });
+  ui.list.appendChild(frag);
 }
 
-function toggleEditor(forceOpen) {
-  const isHidden = editorPanel.classList.contains("hidden");
-  const nextOpen = typeof forceOpen === "boolean" ? forceOpen : isHidden;
-  editorPanel.classList.toggle("hidden", !nextOpen);
-  editToggle.setAttribute("aria-expanded", nextOpen ? "true" : "false");
-  if (!nextOpen) resetForm();
+function renderAppearance() {
+  Theme.apply(state.mode, state.swatch);
+  ui.modes.forEach((btn) => {
+    btn.setAttribute("aria-pressed", String(btn.dataset.mode === state.mode));
+  });
+  ui.swatches.querySelectorAll(".swatch").forEach((btn) => {
+    btn.setAttribute("aria-pressed", String(btn.dataset.swatch === state.swatch));
+  });
+  const hasBg = state.customBg !== "";
+  document.body.classList.toggle("has-bg", hasBg);
+  document.body.style.backgroundImage = hasBg ? `url("${state.customBg}")` : "";
+  ui.bgRemove.hidden = !hasBg;
+  ui.bgPickLabel.textContent = hasBg ? "Change background" : "Upload background";
 }
 
-editToggle.addEventListener("click", () => {
-  toggleEditor();
-});
+function renderAll() {
+  renderAppearance();
+  renderTiles();
+  renderList();
+  ui.showShortcuts.checked = state.showShortcuts;
+  ui.manager.hidden = !state.showShortcuts;
+}
 
-closeEditor.addEventListener("click", () => {
-  toggleEditor(false);
-});
+function buildSwatches() {
+  const frag = document.createDocumentFragment();
+  for (const swatch of Theme.SWATCHES) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "swatch";
+    btn.dataset.swatch = swatch.id;
+    btn.title = swatch.name;
+    btn.setAttribute("aria-label", swatch.name);
+    btn.style.setProperty("--sw-tile", swatch.tile);
+    btn.style.setProperty("--sw-accent", swatch.accent);
+    btn.addEventListener("click", () => {
+      state.swatch = swatch.id;
+      persist({ activeSwatch: swatch.id });
+      renderAppearance();
+    });
+    frag.appendChild(btn);
+  }
+  ui.swatches.appendChild(frag);
+}
 
-cancelEditBtn.addEventListener("click", () => {
-  resetForm();
-});
+/* Drawer */
 
-shortcutForm.addEventListener("submit", (e) => {
-  e.preventDefault();
-  const title = inputTitle.value.trim();
-  const url = normalizeUrl(inputUrl.value);
-  if (!title || !url) return;
+const isOpen = () => ui.panel.classList.contains("open");
 
-  const idx = Number(editIndexInput.value);
-  if (idx >= 0 && idx < shortcuts.length) {
-    shortcuts[idx] = { title, url };
+function setPanel(open, { restoreFocus = true } = {}) {
+  ui.panel.classList.toggle("open", open);
+  ui.panel.inert = !open;
+  ui.toggle.setAttribute("aria-expanded", String(open));
+  if (open) {
+    ui.close.focus();
   } else {
-    shortcuts.push({ title, url });
+    closeForm();
+    if (restoreFocus) ui.toggle.focus();
   }
-  saveShortcuts();
-  resetForm();
-  renderAll();
+}
+
+/* Shortcut form */
+
+function setUrlError(visible) {
+  ui.urlError.hidden = !visible;
+  ui.url.setAttribute("aria-invalid", String(visible));
+}
+
+function openForm(index = -1) {
+  const item = state.shortcuts[index];
+  state.editIndex = item ? index : -1;
+  ui.name.value = item ? item.title : "";
+  ui.url.value = item ? item.url : "";
+  ui.save.textContent = item ? "Save" : "Add";
+  setUrlError(false);
+  ui.form.hidden = false;
+  ui.addTrigger.hidden = true;
+  ui.name.focus();
+}
+
+function closeForm() {
+  state.editIndex = -1;
+  ui.form.reset();
+  ui.form.hidden = true;
+  ui.addTrigger.hidden = false;
+  setUrlError(false);
+}
+
+function commitShortcuts() {
+  persist({ shortcuts: state.shortcuts });
+  renderTiles();
+  renderList();
+}
+
+function removeShortcut(index) {
+  state.shortcuts.splice(index, 1);
+  if (state.editIndex === index) closeForm();
+  commitShortcuts();
+  ui.addTrigger.focus();
+}
+
+ui.form.addEventListener("submit", (event) => {
+  event.preventDefault();
+  const url = toWebUrl(ui.url.value);
+  if (!url) {
+    setUrlError(true);
+    ui.url.focus();
+    return;
+  }
+  const entry = { title: ui.name.value.trim() || hostOf(url), url };
+  if (state.editIndex >= 0) {
+    state.shortcuts[state.editIndex] = entry;
+  } else {
+    state.shortcuts.push(entry);
+  }
+  closeForm();
+  commitShortcuts();
+  ui.addTrigger.focus();
 });
 
-document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape" && !editorPanel.classList.contains("hidden")) {
-    toggleEditor(false);
+ui.url.addEventListener("input", () => {
+  if (!ui.urlError.hidden) setUrlError(false);
+});
+
+ui.cancel.addEventListener("click", () => {
+  closeForm();
+  ui.addTrigger.focus();
+});
+
+ui.addTrigger.addEventListener("click", () => openForm(-1));
+
+ui.emptyAdd.addEventListener("click", () => {
+  setPanel(true);
+  openForm(-1);
+});
+
+/* Appearance controls */
+
+ui.modes.forEach((btn) => {
+  btn.addEventListener("click", () => {
+    state.mode = btn.dataset.mode;
+    persist({ appearanceMode: state.mode });
+    renderAppearance();
+  });
+});
+
+Theme.media.addEventListener("change", () => {
+  if (state.mode === "system") renderAppearance();
+});
+
+function setBgMessage(text) {
+  ui.bgMessage.textContent = text;
+  ui.bgMessage.hidden = text === "";
+}
+
+// Downscale before saving so the stored data URL stays small and quick to paint.
+async function imageToDataUrl(file) {
+  const bitmap = await createImageBitmap(file);
+  const scale = Math.min(1, MAX_BG_EDGE / Math.max(bitmap.width, bitmap.height));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(bitmap.width * scale);
+  canvas.height = Math.round(bitmap.height * scale);
+  canvas.getContext("2d").drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  bitmap.close();
+  return canvas.toDataURL("image/jpeg", 0.86);
+}
+
+ui.bgPick.addEventListener("click", () => ui.bgInput.click());
+
+ui.bgInput.addEventListener("change", async () => {
+  const file = ui.bgInput.files && ui.bgInput.files[0];
+  ui.bgInput.value = "";
+  if (!file) return;
+  setBgMessage("");
+
+  let dataUrl;
+  try {
+    dataUrl = await imageToDataUrl(file);
+  } catch {
+    setBgMessage("That file can't be used as a background. Try a JPEG or PNG.");
+    return;
+  }
+
+  try {
+    await persist({ customBg: dataUrl });
+  } catch {
+    setBgMessage("That image is too large to save. Try a smaller one.");
+    return;
+  }
+  state.customBg = dataUrl;
+  renderAppearance();
+});
+
+ui.bgRemove.addEventListener("click", () => {
+  state.customBg = "";
+  persist({ customBg: "" });
+  setBgMessage("");
+  renderAppearance();
+  ui.bgPick.focus();
+});
+
+ui.showShortcuts.addEventListener("change", () => {
+  state.showShortcuts = ui.showShortcuts.checked;
+  persist({ showShortcuts: state.showShortcuts });
+  if (!state.showShortcuts) closeForm();
+  renderTiles();
+  ui.manager.hidden = !state.showShortcuts;
+});
+
+ui.settings.addEventListener("click", () => {
+  if (typeof chrome !== "undefined" && chrome.tabs) {
+    chrome.tabs.update({ url: "chrome://settings" });
   }
 });
 
-if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
-  chrome.storage.local.get({ shortcuts: DEFAULT_SHORTCUTS }, (data) => {
-    if (Array.isArray(data.shortcuts)) {
-      shortcuts = data.shortcuts;
-    }
+/* Drawer wiring */
+
+ui.toggle.addEventListener("click", () => setPanel(!isOpen()));
+ui.close.addEventListener("click", () => setPanel(false));
+
+document.addEventListener("pointerdown", (event) => {
+  if (!isOpen()) return;
+  if (ui.panel.contains(event.target) || ui.toggle.contains(event.target)) return;
+  setPanel(false, { restoreFocus: false });
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key !== "Escape" || !isOpen()) return;
+  if (!ui.form.hidden) {
+    closeForm();
+    ui.addTrigger.focus();
+    return;
+  }
+  setPanel(false);
+});
+
+/* Boot */
+
+function applyStored(data) {
+  if (Array.isArray(data.shortcuts)) state.shortcuts = data.shortcuts.filter(isShortcut);
+  if (typeof data.showShortcuts === "boolean") state.showShortcuts = data.showShortcuts;
+  if (typeof data.appearanceMode === "string") state.mode = data.appearanceMode;
+  if (typeof data.activeSwatch === "string") state.swatch = data.activeSwatch;
+  if (typeof data.customBg === "string") state.customBg = data.customBg;
+}
+
+buildSwatches();
+renderAll();
+
+if (store) {
+  store.get(STORAGE_DEFAULTS).then((data) => {
+    applyStored(data);
+    writeListCache();
+    Theme.cache(state.mode, state.swatch);
     renderAll();
   });
-} else {
-  renderAll();
+
+  // Keep every open New Tab in sync with changes made in another one.
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area !== "local") return;
+    const data = {};
+    for (const [key, change] of Object.entries(changes)) data[key] = change.newValue;
+    applyStored(data);
+    renderAll();
+  });
 }

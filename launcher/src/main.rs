@@ -24,6 +24,9 @@ struct Config {
     adblocker: bool,
     custom_ui: bool,
     extension_support: bool,
+    tab_density: String,
+    hide_tab_search: bool,
+    show_bookmarks_bar: bool,
     renderer_process_limit: i64,
     v8_max_old_space_mb: i64,
     widevine_path: String,
@@ -47,6 +50,9 @@ impl Default for Config {
             adblocker: true,
             custom_ui: true,
             extension_support: true,
+            tab_density: "helium".to_string(),
+            hide_tab_search: true,
+            show_bookmarks_bar: false,
             renderer_process_limit: 4,
             v8_max_old_space_mb: 512,
             widevine_path: "auto".to_string(),
@@ -323,6 +329,9 @@ impl Config {
                 ("adblocker", JsonVal::Bool(b)) => cfg.adblocker = b,
                 ("custom_ui", JsonVal::Bool(b)) => cfg.custom_ui = b,
                 ("extension_support", JsonVal::Bool(b)) => cfg.extension_support = b,
+                ("tab_density", JsonVal::Str(s)) => cfg.tab_density = s,
+                ("hide_tab_search", JsonVal::Bool(b)) => cfg.hide_tab_search = b,
+                ("show_bookmarks_bar", JsonVal::Bool(b)) => cfg.show_bookmarks_bar = b,
                 ("renderer_process_limit", JsonVal::Int(n)) => cfg.renderer_process_limit = n,
                 ("v8_max_old_space_mb", JsonVal::Int(n)) => cfg.v8_max_old_space_mb = n,
                 ("widevine_path", JsonVal::Str(s)) => cfg.widevine_path = s,
@@ -346,7 +355,7 @@ impl Config {
             .collect::<Vec<_>>()
             .join(", ");
         format!(
-            "{{\n  \"browser_binary\": {},\n  \"profile_dir\": {},\n  \"cache_dir\": {},\n  \"search_engine\": {},\n  \"ram_profile\": {},\n  \"strict_security\": {},\n  \"doh_provider\": {},\n  \"webrtc_privacy\": {},\n  \"tab_sleeping\": {},\n  \"hardware_accel\": {},\n  \"widevine_drm\": {},\n  \"adblocker\": {},\n  \"custom_ui\": {},\n  \"extension_support\": {},\n  \"renderer_process_limit\": {},\n  \"v8_max_old_space_mb\": {},\n  \"widevine_path\": {},\n  \"extra_flags\": [{}]\n}}\n",
+            "{{\n  \"browser_binary\": {},\n  \"profile_dir\": {},\n  \"cache_dir\": {},\n  \"search_engine\": {},\n  \"ram_profile\": {},\n  \"strict_security\": {},\n  \"doh_provider\": {},\n  \"webrtc_privacy\": {},\n  \"tab_sleeping\": {},\n  \"hardware_accel\": {},\n  \"widevine_drm\": {},\n  \"adblocker\": {},\n  \"custom_ui\": {},\n  \"extension_support\": {},\n  \"tab_density\": {},\n  \"hide_tab_search\": {},\n  \"show_bookmarks_bar\": {},\n  \"renderer_process_limit\": {},\n  \"v8_max_old_space_mb\": {},\n  \"widevine_path\": {},\n  \"extra_flags\": [{}]\n}}\n",
             json_escape(&self.browser_binary),
             json_escape(&self.profile_dir),
             json_escape(&self.cache_dir),
@@ -361,6 +370,9 @@ impl Config {
             self.adblocker,
             self.custom_ui,
             self.extension_support,
+            json_escape(&self.tab_density),
+            self.hide_tab_search,
+            self.show_bookmarks_bar,
             self.renderer_process_limit,
             self.v8_max_old_space_mb,
             json_escape(&self.widevine_path),
@@ -873,6 +885,17 @@ fn ensure_profile_preferences(
                     );
                 }
 
+                json_set_nested(
+                    &mut entries,
+                    &["bookmark_bar", "show_on_all_tabs"],
+                    JsonVal::Bool(cfg.show_bookmarks_bar),
+                );
+                json_set_nested(
+                    &mut entries,
+                    &["tab_search", "pinned_to_tabstrip"],
+                    JsonVal::Bool(!cfg.hide_tab_search),
+                );
+
                 let _ = fs::write(&prefs_path, json_serialize(&JsonVal::Obj(entries)));
             }
         }
@@ -1103,7 +1126,7 @@ fn apply_flatpak_filesystems(
 
 // --- Settings Mode (TUI + CLI) ---
 
-const TOGGLES: [(&str, &str, &str); 8] = [
+const TOGGLES: [(&str, &str, &str); 10] = [
     ("strict_security", "Strict Security (Site Isolation + HTTPS-First + 3P Cookie Block)", "Enforce --site-per-process, HTTPS-First, block 3rd-party cookies & Privacy Sandbox"),
     ("webrtc_privacy", "WebRTC IP Privacy", "Prevent WebRTC local IP leaks (--force-webrtc-ip-handling-policy=disable_non_proxied_udp)"),
     ("tab_sleeping", "Tab Sleeping & Low-RAM Mode", "Aggressive Memory Saver, renderer cap, V8 heap limit, no background net/telemetry"),
@@ -1112,6 +1135,8 @@ const TOGGLES: [(&str, &str, &str); 8] = [
     ("adblocker", "Built-in Adblocker (Kestrel Shield)", "Load custom low-RAM MV3 adblocker extension"),
     ("custom_ui", "Kestrel Dark Theme & Custom New Tab", "Load Kestrel obsidian dark theme and custom start page"),
     ("extension_support", "Extension & Web Store Support", "Allow installing extensions and .crx packages from Chrome Web Store"),
+    ("hide_tab_search", "Hide Left Tab-Search Chevron Button", "Hide the top-left tab search dropdown button for a clean Helium tab strip"),
+    ("show_bookmarks_bar", "Show Bookmarks Bar", "Sync bookmark_bar.show_on_all_tabs in browser profile Preferences"),
 ];
 
 fn get_toggle(cfg: &Config, key: &str) -> Option<bool> {
@@ -1124,6 +1149,8 @@ fn get_toggle(cfg: &Config, key: &str) -> Option<bool> {
         "adblocker" => Some(cfg.adblocker),
         "custom_ui" => Some(cfg.custom_ui),
         "extension_support" => Some(cfg.extension_support),
+        "hide_tab_search" => Some(cfg.hide_tab_search),
+        "show_bookmarks_bar" => Some(cfg.show_bookmarks_bar),
         _ => None,
     }
 }
@@ -1138,6 +1165,8 @@ fn set_toggle(cfg: &mut Config, key: &str, val: bool) -> bool {
         "adblocker" => cfg.adblocker = val,
         "custom_ui" => cfg.custom_ui = val,
         "extension_support" => cfg.extension_support = val,
+        "hide_tab_search" => cfg.hide_tab_search = val,
+        "show_bookmarks_bar" => cfg.show_bookmarks_bar = val,
         _ => return false,
     }
     true
@@ -1159,11 +1188,12 @@ fn print_settings_status(cfg: &Config) {
         println!("           {}", desc);
     }
     println!();
-    println!("  [9]  [{}] Renderer Process Limit (renderer_process_limit, 1-32)", cfg.renderer_process_limit);
-    println!("  [10] [{}] V8 Max Heap per Tab (MB) (v8_max_old_space_mb, 128-4096)", cfg.v8_max_old_space_mb);
-    println!("  [11] [{}] RAM Profile (ultra | balanced)", cfg.ram_profile);
-    println!("  [12] [{}] DNS-over-HTTPS Provider (quad9 | cloudflare | mullvad | off)", cfg.doh_provider);
-    println!("  [13] [{}] Default Search Engine (duckduckgo | brave | startpage | google)", cfg.search_engine);
+    println!("  [11] [{}] Renderer Process Limit (renderer_process_limit, 1-32)", cfg.renderer_process_limit);
+    println!("  [12] [{}] V8 Max Heap per Tab (MB) (v8_max_old_space_mb, 128-4096)", cfg.v8_max_old_space_mb);
+    println!("  [13] [{}] RAM Profile (ultra | balanced)", cfg.ram_profile);
+    println!("  [14] [{}] DNS-over-HTTPS Provider (quad9 | cloudflare | mullvad | off)", cfg.doh_provider);
+    println!("  [15] [{}] Default Search Engine (duckduckgo | brave | startpage | google)", cfg.search_engine);
+    println!("  [16] [{}] Tab Density (compact | helium | standard)", cfg.tab_density);
     println!();
 }
 
@@ -1197,14 +1227,17 @@ fn run_settings_interactive(mut cfg: Config) -> i32 {
                 cfg = Config::default();
                 let _ = save_config(&cfg);
             }
-            "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" => {
+            "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "10" => {
                 let idx = choice.parse::<usize>().unwrap() - 1;
                 let key = TOGGLES[idx].0;
                 let cur = get_toggle(&cfg, key).unwrap_or(false);
                 set_toggle(&mut cfg, key, !cur);
                 let _ = save_config(&cfg);
+                if matches!(key, "hide_tab_search" | "show_bookmarks_bar") {
+                    ensure_profile_preferences(&expand_tilde(&cfg.profile_dir), &cfg, false, None);
+                }
             }
-            "9" => {
+            "11" => {
                 print!("Enter Renderer Process Limit (1-32) [{}]: ", cfg.renderer_process_limit);
                 let _ = stdout.flush();
                 let mut raw = String::new();
@@ -1217,7 +1250,7 @@ fn run_settings_interactive(mut cfg: Config) -> i32 {
                     }
                 }
             }
-            "10" => {
+            "12" => {
                 print!("Enter V8 Max Heap per Tab in MB (128-4096) [{}]: ", cfg.v8_max_old_space_mb);
                 let _ = stdout.flush();
                 let mut raw = String::new();
@@ -1230,7 +1263,7 @@ fn run_settings_interactive(mut cfg: Config) -> i32 {
                     }
                 }
             }
-            "11" => {
+            "13" => {
                 cfg.ram_profile = if cfg.ram_profile == "ultra" {
                     cfg.renderer_process_limit = 6;
                     cfg.v8_max_old_space_mb = 768;
@@ -1242,7 +1275,7 @@ fn run_settings_interactive(mut cfg: Config) -> i32 {
                 };
                 let _ = save_config(&cfg);
             }
-            "12" => {
+            "14" => {
                 print!("Enter DoH provider (quad9, cloudflare, mullvad, off) [{}]: ", cfg.doh_provider);
                 let _ = stdout.flush();
                 let mut raw = String::new();
@@ -1254,7 +1287,7 @@ fn run_settings_interactive(mut cfg: Config) -> i32 {
                     }
                 }
             }
-            "13" => {
+            "15" => {
                 print!("Enter search engine (duckduckgo, brave, startpage, google) [{}]: ", cfg.search_engine);
                 let _ = stdout.flush();
                 let mut raw = String::new();
@@ -1264,6 +1297,18 @@ fn run_settings_interactive(mut cfg: Config) -> i32 {
                         cfg.search_engine = val;
                         let _ = save_config(&cfg);
                         ensure_profile_preferences(&expand_tilde(&cfg.profile_dir), &cfg, true, None);
+                    }
+                }
+            }
+            "16" => {
+                print!("Enter tab density (compact, helium, standard) [{}]: ", cfg.tab_density);
+                let _ = stdout.flush();
+                let mut raw = String::new();
+                if stdin.lock().read_line(&mut raw).is_ok() {
+                    let val = raw.trim().to_ascii_lowercase();
+                    if matches!(val.as_str(), "compact" | "helium" | "standard") {
+                        cfg.tab_density = val;
+                        let _ = save_config(&cfg);
                     }
                 }
             }
@@ -1344,16 +1389,27 @@ fn run_settings(args: &[String]) -> i32 {
             return 1;
         };
         match key {
-            "strict_security" | "webrtc_privacy" | "tab_sleeping" | "hardware_accel" | "widevine_drm" | "adblocker" | "custom_ui" | "extension_support" => {
+            "strict_security" | "webrtc_privacy" | "tab_sleeping" | "hardware_accel" | "widevine_drm" | "adblocker" | "custom_ui" | "extension_support" | "hide_tab_search" | "show_bookmarks_bar" => {
                 match parse_bool(val) {
                     Ok(b) => {
                         set_toggle(&mut cfg, key, b);
+                        if matches!(key, "hide_tab_search" | "show_bookmarks_bar") {
+                            ensure_profile_preferences(&expand_tilde(&cfg.profile_dir), &cfg, false, None);
+                        }
                     }
                     Err(e) => {
                         eprintln!("{e}");
                         return 1;
                     }
                 }
+            }
+            "tab_density" => {
+                let low = val.trim().to_ascii_lowercase();
+                if !matches!(low.as_str(), "compact" | "helium" | "standard") {
+                    eprintln!("Unsupported tab_density '{val}'. Choose: compact, helium, standard");
+                    return 1;
+                }
+                cfg.tab_density = low;
             }
             "renderer_process_limit" => match val.parse::<i64>() {
                 Ok(n) => cfg.renderer_process_limit = n,
@@ -1637,6 +1693,9 @@ fn run_native_messaging() -> i32 {
                     }
                     ("search_engine", Some(JsonVal::Str(s))) if search_engine_spec(s).is_some() => {
                         cfg.search_engine = s.clone();
+                    }
+                    ("tab_density", Some(JsonVal::Str(s))) if matches!(s.as_str(), "compact" | "helium" | "standard") => {
+                        cfg.tab_density = s.clone();
                     }
                     _ => err_msg = Some(format!("Unsupported key/value for '{key}'")),
                 }

@@ -2,89 +2,74 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Kestrel Shield</title>
   <link rel="stylesheet" href="popup.css">
 </head>
 <body>
-  <main class="card">
-    <header class="header">
-      <div class="brand">
-        <span class="dot" id="statusDot"></span>
-        <h1>Kestrel Shield</h1>
-      </div>
-      <label class="master-switch" title="Toggle Shields for this site">
-        <input type="checkbox" id="toggleSiteShield">
-      </label>
+  <main class="panel" id="panel" data-state="up">
+    <header class="head">
+      <svg class="mark" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+        <path
+          fill="currentColor"
+          fill-rule="evenodd"
+          d="M12 2.5L4.5 5.3V11.4C4.5 15.9 7.6 19.8 12 21C16.4 19.8 19.5 15.9 19.5 11.4V5.3Z M6.5 9.1L17.4 7L13.6 11.6L17 12.5L10.7 17.1L12 12.5L6.9 11.6Z"
+        />
+      </svg>
+      <span class="brand">Kestrel Shield</span>
     </header>
 
-    <section class="hero">
-      <div class="hero-left">
-        <div class="site-host" id="siteHost">—</div>
-        <div class="site-state" id="statusBadge">Shields UP</div>
+    <section class="site">
+      <div class="site-top">
+        <div class="site-text">
+          <h1 class="host" id="siteHost">&nbsp;</h1>
+          <p class="status" id="siteStatus">Shields up</p>
+        </div>
+        <input type="checkbox" class="switch switch-lg" id="siteShield" role="switch" aria-label="Shields for this site" checked>
       </div>
-      <div class="hero-count">
-        <span class="count-num" id="blockedCount">0</span>
-        <span class="count-label">Blocked</span>
-      </div>
+      <p class="readout" aria-live="polite">
+        <span class="count"><span class="count-num" id="blockedCount">0</span> <span id="blockedLabel">blocked on this page</span></span>
+        <span class="rules" id="ruleCount"></span>
+      </p>
     </section>
 
-    <section class="segment-group" id="levelGroup">
-      <span class="segment-label">Blocking Level</span>
-      <div class="segmented">
-        <button type="button" class="seg-btn active" data-level="standard">Standard</button>
-        <button type="button" class="seg-btn" data-level="aggressive">Aggressive</button>
+    <section class="rows">
+      <div class="row" id="levelRow">
+        <span class="row-label" id="levelLabel">Blocking level</span>
+        <div class="segmented" role="group" aria-labelledby="levelLabel">
+          <button type="button" class="seg" data-level="standard" aria-pressed="true">Standard</button>
+          <button type="button" class="seg" data-level="aggressive" aria-pressed="false" title="Also drops third-party pings, CSP reports, and all beacons">Aggressive</button>
+        </div>
       </div>
-    </section>
 
-    <section class="controls">
-      <label class="toggle-row" id="scriptsRow">
-        <span>
-          <strong>Block Scripts</strong>
-          <small>Disable JS on this site</small>
-        </span>
-        <input type="checkbox" id="toggleScripts">
+      <label class="row" id="scriptsRow">
+        <span class="row-label">Block scripts on this site</span>
+        <input type="checkbox" class="switch" id="toggleScripts" role="switch">
       </label>
 
-      <label class="toggle-row">
-        <span>
-          <strong>Anti-Fingerprinting</strong>
-          <small>Canvas/audio jitter &amp; beacon block</small>
-        </span>
-        <input type="checkbox" id="toggleFingerprint">
+      <label class="row" id="fpRow" title="Adds canvas and audio noise and drops tracking beacons">
+        <span class="row-label">Anti-fingerprinting</span>
+        <input type="checkbox" class="switch" id="toggleFingerprint" role="switch" checked>
       </label>
 
-      <label class="toggle-row">
-        <span>
-          <strong>Cosmetic Filtering</strong>
-          <small>Hide ad &amp; sponsored containers</small>
-        </span>
-        <input type="checkbox" id="toggleCosmetic">
+      <label class="row" id="cosmeticRow" title="Hides leftover ad slots and sponsored boxes">
+        <span class="row-label">Cosmetic filtering</span>
+        <input type="checkbox" class="switch" id="toggleCosmetic" role="switch" checked>
       </label>
 
-      <label class="toggle-row">
-        <span>
-          <strong>Annoyances &amp; Cookies</strong>
-          <small>Block cookie banners &amp; popups</small>
-        </span>
-        <input type="checkbox" id="toggleAnnoyances">
+      <label class="row" id="annoyancesRow">
+        <span class="row-label">Cookie banners &amp; annoyances</span>
+        <input type="checkbox" class="switch" id="toggleAnnoyances" role="switch" checked>
       </label>
 
-      <label class="toggle-row">
-        <span>
-          <strong>Strip Tracking Params</strong>
-          <small>Remove utm_*, fbclid, gclid</small>
-        </span>
-        <input type="checkbox" id="toggleTrackingParams">
+      <label class="row" id="trackingRow" title="Removes utm_*, fbclid, gclid and similar from links">
+        <span class="row-label">Strip tracking parameters</span>
+        <input type="checkbox" class="switch" id="toggleTracking" role="switch" checked>
       </label>
     </section>
 
-    <footer class="footer">
-      <span class="meta" id="ruleCount">28,724 DNR + 3.3k CSS</span>
-      <div class="footer-actions">
-        <button type="button" id="toggleGlobalBtn" class="link-btn subtle">Global: ON</button>
-        <button type="button" id="openOptions" class="link-btn">Options</button>
-      </div>
+    <footer class="foot">
+      <button type="button" class="text-btn" id="globalToggle">Pause on all sites</button>
+      <button type="button" class="text-btn" id="openOptions">Settings</button>
     </footer>
   </main>
   <script src="popup.js"></script>

@@ -134,6 +134,16 @@ async function syncRules() {
   });
 }
 
+// Serialize syncs: overlapping storage changes would otherwise race on dynamic rule IDs.
+let syncQueue = Promise.resolve();
+
+function queueSync() {
+  syncQueue = syncQueue
+    .then(syncRules)
+    .catch((err) => console.warn("Kestrel Shield: rule sync failed", err));
+  return syncQueue;
+}
+
 function initBadge() {
   if (chrome.declarativeNetRequest.setExtensionActionOptions) {
     chrome.declarativeNetRequest
@@ -146,12 +156,12 @@ chrome.runtime.onInstalled.addListener(async () => {
   const current = await chrome.storage.local.get(null);
   await chrome.storage.local.set({ ...DEFAULT_SETTINGS, ...current });
   initBadge();
-  await syncRules();
+  await queueSync();
 });
 
 chrome.runtime.onStartup.addListener(() => {
   initBadge();
-  syncRules();
+  queueSync();
 });
 
 chrome.storage.onChanged.addListener((changes, area) => {
@@ -165,6 +175,13 @@ chrome.storage.onChanged.addListener((changes, area) => {
     changes.blockScriptsSites ||
     changes.customDomains
   ) {
-    syncRules();
+    queueSync();
   }
+});
+
+// The popup waits on this before reloading a tab, so the reload sees the new rules.
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (!message || message.type !== "kestrel-sync") return false;
+  queueSync().then(() => sendResponse({ ok: true }));
+  return true;
 });

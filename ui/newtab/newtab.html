@@ -6,19 +6,25 @@
   <title>New Tab</title>
   <link rel="icon" type="image/png" href="icons/icon48.png">
   <link rel="stylesheet" href="newtab.css">
+  <script src="theme.js"></script>
 </head>
 <body>
   <main class="stage">
-    <div class="tiles-grid" id="tilesGrid" aria-label="Pinned shortcuts"></div>
+    <nav class="tiles" id="tilesGrid" aria-label="Shortcuts"></nav>
+    <div class="empty" id="emptyState" hidden>
+      <p class="empty-text">No shortcuts yet</p>
+      <button type="button" class="btn" id="emptyAdd">Add shortcut</button>
+    </div>
   </main>
 
   <button
     type="button"
+    class="fab"
     id="editToggle"
-    class="pencil-btn"
-    title="Customize shortcuts"
-    aria-label="Customize shortcuts"
+    aria-controls="editorPanel"
     aria-expanded="false"
+    aria-label="Customize Kestrel"
+    title="Customize Kestrel"
   >
     <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
       <path d="M12 20h9"/>
@@ -26,23 +32,90 @@
     </svg>
   </button>
 
-  <aside id="editorPanel" class="editor-popover hidden" aria-label="Manage shortcuts">
-    <div class="editor-header">
-      <span class="editor-title" id="formHeading">Shortcuts</span>
-      <button type="button" id="closeEditor" class="icon-close" aria-label="Close">&times;</button>
+  <aside class="drawer" id="editorPanel" aria-labelledby="drawerTitle" inert>
+    <header class="drawer-head">
+      <h2 class="drawer-title" id="drawerTitle">Customize Kestrel</h2>
+      <button type="button" class="icon-btn" id="closePanel" aria-label="Close">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
+          <path d="M6 6l12 12"/>
+          <path d="M18 6 6 18"/>
+        </svg>
+      </button>
+    </header>
+
+    <div class="drawer-body">
+      <section class="group" aria-labelledby="appearanceTitle">
+        <h3 class="group-title" id="appearanceTitle">Appearance</h3>
+
+        <div class="segmented" role="group" aria-label="Theme">
+          <button type="button" class="seg" data-mode="matte" aria-pressed="true">Matte</button>
+          <button type="button" class="seg" data-mode="dark" aria-pressed="false">Dark</button>
+          <button type="button" class="seg" data-mode="system" aria-pressed="false">System</button>
+        </div>
+
+        <div class="swatches" id="swatches" role="group" aria-label="Color"></div>
+
+        <div class="bg-row">
+          <button type="button" class="btn btn-wide" id="bgPick">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="3" y="4" width="18" height="16" rx="2"/>
+              <circle cx="9" cy="10" r="1.6"/>
+              <path d="m21 16-5-5-9 9"/>
+            </svg>
+            <span id="bgPickLabel">Upload background</span>
+          </button>
+          <button type="button" class="btn btn-quiet" id="bgRemove" hidden>Remove</button>
+          <input type="file" id="bgInput" accept="image/*" hidden>
+        </div>
+        <p class="note note-error" id="bgMessage" role="status" hidden></p>
+      </section>
+
+      <section class="group" aria-labelledby="shortcutsTitle">
+        <div class="group-head">
+          <h3 class="group-title" id="shortcutsTitle">Shortcuts</h3>
+          <input type="checkbox" class="switch" id="showShortcuts" role="switch" aria-label="Show shortcuts" checked>
+        </div>
+
+        <div class="manager" id="shortcutManager">
+          <ul class="sc-list" id="shortcutList"></ul>
+
+          <button type="button" class="btn btn-wide btn-add" id="addTrigger">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
+              <path d="M12 5v14"/>
+              <path d="M5 12h14"/>
+            </svg>
+            <span>Add shortcut</span>
+          </button>
+
+          <form class="sc-form" id="shortcutForm" novalidate hidden>
+            <label class="field">
+              <span class="field-label">Name</span>
+              <input type="text" class="input" id="scName" maxlength="24" autocomplete="off" placeholder="GitHub">
+            </label>
+            <label class="field">
+              <span class="field-label">Address</span>
+              <input type="text" class="input" id="scUrl" autocomplete="off" spellcheck="false" placeholder="github.com" aria-describedby="scUrlError">
+            </label>
+            <p class="note note-error" id="scUrlError" hidden>Enter a web address like github.com</p>
+            <div class="form-actions">
+              <button type="button" class="btn btn-quiet" id="scCancel">Cancel</button>
+              <button type="submit" class="btn btn-primary" id="scSave">Add</button>
+            </div>
+          </form>
+        </div>
+      </section>
+
+      <section class="group" aria-labelledby="tabsTitle">
+        <h3 class="group-title" id="tabsTitle">Toolbar &amp; tabs</h3>
+        <button type="button" class="nav-row" id="openSettings">
+          <span>Tab &amp; browser settings</span>
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M5 12h14"/>
+            <path d="m13 6 6 6-6 6"/>
+          </svg>
+        </button>
+      </section>
     </div>
-
-    <ul id="editorList" class="editor-list"></ul>
-
-    <form id="shortcutForm" class="editor-form" autocomplete="off">
-      <input type="hidden" id="editIndex" value="-1">
-      <input type="text" id="inputTitle" placeholder="Name" maxlength="24" required aria-label="Shortcut name">
-      <input type="text" id="inputUrl" placeholder="https://example.com" required aria-label="Shortcut URL">
-      <div class="editor-actions">
-        <button type="submit" id="saveBtn" class="btn-primary">Add</button>
-        <button type="button" id="cancelEditBtn" class="btn-ghost hidden">Cancel</button>
-      </div>
-    </form>
   </aside>
 
   <script src="newtab.js"></script>

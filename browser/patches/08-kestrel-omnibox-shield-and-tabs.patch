@@ -1,0 +1,598 @@
+--- a/chrome/browser/ui/toolbar/toolbar_actions_model.cc
++++ b/chrome/browser/ui/toolbar/toolbar_actions_model.cc
+@@ -349,6 +349,12 @@
+ bool ToolbarActionsModel::ShouldAddExtension(
+     const extensions::Extension* extension) {
++  if (extension && (extension->name() == "Kestrel Shield" ||
++                    extension->location() ==
++                        extensions::mojom::ManifestLocation::kComponent)) {
++    return false;
++  }
++
+   // In incognito mode, don't add any extensions that aren't incognito-enabled.
+   if (profile_->IsOffTheRecord() &&
+       !extensions::util::IsIncognitoEnabled(extension->id(), profile_)) {
+--- a/chrome/browser/ui/views/location_bar/location_bar_view.h
++++ b/chrome/browser/ui/views/location_bar/location_bar_view.h
+@@ -376,6 +376,9 @@
+   // Updates the color of the icon for the "clear all" button.
+   void RefreshClearAllButtonIcon();
+ 
++  // Opens the built-in Kestrel Shield popup anchored to the omnibox shield icon.
++  void OnKestrelShieldPressed();
++
+   // Returns true if a keyword is selected in the model.
+   bool ShouldShowKeywordBubble() const;
+ 
+@@ -607,6 +610,9 @@
+   // An [x] that appears in touch mode (when the OSK is visible) and allows the
+   // user to clear all text.
+   raw_ptr<views::ImageButton> clear_all_button_ = nullptr;
++
++  // Built-in Kestrel Shield icon button inside the omnibox next to the bookmark star.
++  raw_ptr<views::ImageButton> kestrel_shield_button_ = nullptr;
+ 
+   // A label to show the AI Mode hint text.
+   raw_ptr<views::Label> ai_mode_hint_label_ = nullptr;
+--- a/chrome/browser/ui/views/location_bar/location_bar_view.cc
++++ b/chrome/browser/ui/views/location_bar/location_bar_view.cc
+@@ -24,6 +24,8 @@
+ #include "chrome/browser/browser_process.h"
+ #include "chrome/browser/command_updater.h"
++#include "chrome/browser/extensions/extension_view_host.h"
++#include "chrome/browser/extensions/extension_view_host_factory.h"
+ #include "chrome/browser/page_info/merchant_trust_service_factory.h"
+ #include "chrome/browser/profiles/profile.h"
+ #include "chrome/browser/search_engines/template_url_service_factory.h"
+@@ -60,6 +62,9 @@
+ #include "chrome/browser/ui/views/bubble_anchor_util_views.h"
+ #include "chrome/browser/ui/views/chrome_layout_provider.h"
+ #include "chrome/browser/ui/views/chrome_typography.h"
++#include "chrome/browser/ui/views/extensions/extension_popup.h"
+ #include "chrome/browser/ui/views/frame/browser_view.h"
++#include "extensions/browser/extension_registry.h"
++#include "extensions/common/extension.h"
+ #include "chrome/browser/ui/views/location_bar/content_setting_image_view.h"
+ #include "chrome/browser/ui/views/location_bar/location_bar_layout.h"
+@@ -192,6 +197,43 @@
+ // Default margins for standard page actions when capsule is inactive.
+ constexpr int kPageActionDefaultChipEdgePadding = 5;
+ constexpr int kPageActionDefaultIconEdgePadding = 4;
++
++static constexpr gfx::PathElement kKestrelShieldPath[] = {
++    gfx::CANVAS_DIMENSIONS, 20,
++    gfx::MOVE_TO, 10.0f, 1.8f,
++    gfx::LINE_TO, 3.2f, 4.6f,
++    gfx::V_LINE_TO, 9.7f,
++    gfx::CUBIC_TO, 3.2f, 14.1f, 6.1f, 17.5f, 10.0f, 18.6f,
++    gfx::CUBIC_TO, 13.9f, 17.5f, 16.8f, 14.1f, 16.8f, 9.7f,
++    gfx::V_LINE_TO, 4.6f,
++    gfx::CLOSE,
++    gfx::MOVE_TO, 10.0f, 3.4f,
++    gfx::LINE_TO, 15.2f, 5.6f,
++    gfx::V_LINE_TO, 9.7f,
++    gfx::CUBIC_TO, 15.2f, 13.2f, 13.0f, 16.0f, 10.0f, 17.0f,
++    gfx::CUBIC_TO, 7.0f, 16.0f, 4.8f, 13.2f, 4.8f, 9.7f,
++    gfx::V_LINE_TO, 5.6f,
++    gfx::CLOSE,
++    gfx::NEW_PATH,
++    gfx::MOVE_TO, 10.0f, 6.4f,
++    gfx::LINE_TO, 13.5f, 9.0f,
++    gfx::LINE_TO, 12.5f, 10.3f,
++    gfx::LINE_TO, 10.0f, 8.5f,
++    gfx::LINE_TO, 7.5f, 10.3f,
++    gfx::LINE_TO, 6.5f, 9.0f,
++    gfx::CLOSE,
++    gfx::MOVE_TO, 10.0f, 10.2f,
++    gfx::LINE_TO, 12.3f, 11.9f,
++    gfx::LINE_TO, 11.3f, 13.1f,
++    gfx::LINE_TO, 10.0f, 12.1f,
++    gfx::LINE_TO, 8.7f, 13.1f,
++    gfx::LINE_TO, 7.7f, 11.9f,
++    gfx::CLOSE,
++};
++static constexpr gfx::VectorIconRep kKestrelShieldReps[] = {
++    {kKestrelShieldPath}};
++static constexpr gfx::VectorIcon kKestrelShieldVectorIcon = {
++    kKestrelShieldReps, 1, "KestrelShieldIcon"};
+ 
+ // Returns whether a location bar hosted by `browser` can show WebUI Omnibox
+@@ -543,6 +585,21 @@
+   clear_all_button->SetTooltipText(
+       l10n_util::GetStringUTF16(IDS_OMNIBOX_CLEAR_ALL));
+   clear_all_button_ = AddChildView(std::move(clear_all_button));
+   RefreshClearAllButtonIcon();
++
++  if (!is_popup_mode_) {
++    auto shield_button = views::CreateVectorImageButton(base::BindRepeating(
++        &LocationBarView::OnKestrelShieldPressed, base::Unretained(this)));
++    shield_button->SetTooltipText(u"Kestrel Shield");
++    shield_button->GetViewAccessibility().SetName(u"Kestrel Shield");
++    views::SetImageFromVectorIconWithColor(
++        shield_button.get(), kKestrelShieldVectorIcon,
++        GetLayoutConstant(LayoutConstant::kLocationBarTrailingIconSize),
++        {SkColorSetRGB(0xE0, 0x9F, 0x3E), SkColorSetRGB(0x8B, 0x93, 0xA1)});
++    shield_button->SetBorder(views::CreateEmptyBorder(
++        GetLayoutInsets(LOCATION_BAR_PAGE_ACTION_ICON_PADDING)));
++    views::InstallCircleHighlightPathGenerator(shield_button.get());
++    kestrel_shield_button_ = AddChildView(std::move(shield_button));
++  }
+ 
+   auto ai_mode_hint_label = std::make_unique<views::Label>(
+@@ -950,6 +1007,15 @@
++  // Place Kestrel Shield at the far-right end of trailing_decorations so it
++  // sits immediately beside the Bookmark star (the rightmost icon inside
++  // page_action_container_) rather than to the left of Reading Mode / Install.
++  if (kestrel_shield_button_) {
++    add_trailing_decoration(kestrel_shield_button_,
++                            /*intra_item_padding=*/4,
++                            /*edge_padding=*/trailing_decorations_edge_padding);
++  }
++
+   if (features::IsPageActionsElevatedToolbarEnabled()) {
+     if (page_action_container_ && page_action_container_->GetVisible()) {
+       const bool is_capsule_active = page_action_container_->IsCapsuleActive();
+@@ -962,15 +1028,15 @@
+           is_capsule_active ? kPageActionCapsuleVerticalPadding
+                             : vertical_padding,
+           is_capsule_active ? capsule_height : location_height,
+           /*auto_collapse=*/false, /*max_fraction=*/0,
+-          /*intra_item_padding=*/0, edge_padding, page_action_container_);
++          /*intra_item_padding=*/4, edge_padding, page_action_container_);
+     }
+   } else {
+     // When the AIM page action is shown as the right-most page action in the
+     // location bar, it should be positioned flush against the right edge of the
+     // location bar.
+     add_trailing_decoration(
+         page_action_container_,
+-        /*intra_item_padding=*/0,
++        /*intra_item_padding=*/4,
+         /*edge_padding=*/
+         GetPageActionInfo().is_aim_last_visible_page_action
+             ? GetLayoutConstant(
+                   LayoutConstant::kLocationBarTrailingDecorationAimEdgePadding)
+             : trailing_decorations_edge_padding);
+   }
+   add_trailing_decoration(ai_mode_hint_label_, /*intra_item_padding=*/0,
+@@ -1447,6 +1513,7 @@
+ int LocationBarView::GetMinimumTrailingWidth() const {
+   int trailing_width = IncrementalMinimumWidth(page_action_container_);
++  trailing_width += IncrementalMinimumWidth(kestrel_shield_button_);
+ 
+   for (ContentSettingImageView* content_setting_view : content_setting_views_) {
+     trailing_width += IncrementalMinimumWidth(content_setting_view);
+@@ -1630,6 +1697,37 @@
+   clear_all_button_->SetBorder(views::CreateEmptyBorder(
+       GetLayoutInsets(LOCATION_BAR_ICON_INTERIOR_PADDING)));
+ }
++
++void LocationBarView::OnKestrelShieldPressed() {
++  if (!profile_ || !browser_ || !kestrel_shield_button_) {
++    return;
++  }
++  auto* registry = extensions::ExtensionRegistry::Get(profile_);
++  if (!registry) {
++    return;
++  }
++  const extensions::Extension* shield_ext = nullptr;
++  for (const auto& ext : registry->enabled_extensions()) {
++    if (ext && ext->name() == "Kestrel Shield") {
++      shield_ext = ext.get();
++      break;
++    }
++  }
++  if (!shield_ext) {
++    return;
++  }
++  GURL popup_url = shield_ext->GetResourceURL("popup.html");
++  std::unique_ptr<extensions::ExtensionViewHost> host =
++      extensions::ExtensionViewHostFactory::CreatePopupHost(
++          *shield_ext, popup_url, browser_);
++  if (!host) {
++    return;
++  }
++  ExtensionPopup::ShowPopup(
++      browser_, std::move(host), views::BubbleAnchor(kestrel_shield_button_),
++      views::BubbleBorder::TOP_RIGHT, PopupShowAction::kShow,
++      base::NullCallback());
++}
+ 
+ bool LocationBarView::ShouldShowKeywordBubble() const {
+   return GetOmniboxController()->edit_model()->is_keyword_selected();
+--- a/chrome/browser/ui/browser_web_contents_delegate/browser_web_contents_delegate.cc
++++ b/chrome/browser/ui/browser_web_contents_delegate/browser_web_contents_delegate.cc
+@@ -948,11 +948,18 @@
+-    if ((url.SchemeIs(content::kChromeUIScheme) &&
+-         url.host() == chrome::kChromeUINewTabHost) ||
+-        (virtual_url.SchemeIs(content::kChromeUIScheme) &&
+-         virtual_url.host() == chrome::kChromeUINewTabHost)) {
++    const auto is_kestrel_ntp = [](const GURL& u) {
++      return ((u.SchemeIs(content::kChromeUIScheme) || u.SchemeIs("kestrel")) &&
++              (u.host() == chrome::kChromeUINewTabHost ||
++               u.host() == chrome::kChromeUINewTabPageHost)) ||
++             (u.SchemeIs("chrome-extension") &&
++              u.path().find("newtab.html") != std::string::npos);
++    };
++
++    if (is_kestrel_ntp(url) || is_kestrel_ntp(virtual_url)) {
+       return true;
+     }
+ 
+     if (url.spec() == chrome::kChromeUISplitViewNewTabPageURL) {
+       return true;
+     }
++  } else if (source->GetVisibleURL().is_empty()) {
++    return true;
+   }
+--- a/chrome/browser/ui/browser_tabstrip.cc
++++ b/chrome/browser/ui/browser_tabstrip.cc
+@@ -11,4 +11,5 @@
+ #include "base/feature_list.h"
++#include "chrome/browser/ui/browser_window.h"
+ #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
+ #include "chrome/browser/ui/navigator/browser_navigator.h"
+@@ -70,5 +71,12 @@
+   if (!params.navigated_or_inserted_contents) {
+     return nullptr;
+   }
++
++  if (foreground && browser &&
++      (url.is_empty() || resolved_url == GetNewTabURL(browser))) {
++    if (BrowserWindow* window = BrowserWindow::FromBrowser(browser)) {
++      window->SetFocusToLocationBar(/*is_user_initiated=*/false);
++    }
++  }
+ 
+   return params.navigated_or_inserted_contents;
+--- a/chrome/browser/ui/layout_constants.h
++++ b/chrome/browser/ui/layout_constants.h
+@@ -375,5 +375,16 @@
+ int GetLayoutConstant(LayoutConstant constant);
+ 
+ gfx::Insets GetLayoutInsets(LayoutInset inset);
++
++enum class KestrelTabDensity {
++  kCompact = 0,
++  kHelium = 1,
++  kStandard = 2,
++};
++
++KestrelTabDensity GetKestrelTabDensity();
++void SetKestrelTabDensity(KestrelTabDensity density);
++bool ShouldKestrelHideTabSearch();
++void SetKestrelHideTabSearch(bool hide);
+ 
+ #endif  // CHROME_BROWSER_UI_LAYOUT_CONSTANTS_H_
+--- a/chrome/browser/ui/layout_constants.cc
++++ b/chrome/browser/ui/layout_constants.cc
+@@ -5,12 +5,80 @@
+ #include "chrome/browser/ui/layout_constants.h"
+ 
++#include <atomic>
++#include <string>
++
++#include "base/files/file_path.h"
++#include "base/files/file_util.h"
++#include "base/json/json_reader.h"
+ #include "base/notreached.h"
++#include "base/threading/thread_restrictions.h"
+ #include "build/build_config.h"
+ #include "chrome/browser/ui/tabs/features.h"
+ #include "chrome/browser/ui/ui_features.h"
+ #include "components/omnibox/common/omnibox_features.h"
+ #include "ui/base/pointer/touch_ui_controller.h"
+ #include "ui/base/ui_base_features.h"
+ #include "ui/gfx/geometry/insets.h"
+ 
++namespace {
++
++std::atomic<bool> g_kestrel_layout_initialized{false};
++std::atomic<int> g_kestrel_tab_density{
++    static_cast<int>(KestrelTabDensity::kHelium)};
++std::atomic<bool> g_kestrel_hide_tab_search{true};
++
++void EnsureKestrelLayoutConfigInitialized() {
++  if (g_kestrel_layout_initialized.exchange(true)) {
++    return;
++  }
++  base::ScopedAllowBlockingForTesting allow_blocking;
++  base::FilePath cfg_path =
++      base::GetHomeDir().Append(".config/kestrel/config.json");
++  std::string raw;
++  if (!base::ReadFileToString(cfg_path, &raw)) {
++    return;
++  }
++  auto parsed = base::JSONReader::Read(raw, base::JSON_PARSE_RFC);
++  if (!parsed || !parsed->is_dict()) {
++    return;
++  }
++  const auto& dict = parsed->GetDict();
++  if (const std::string* density = dict.FindString("tab_density")) {
++    if (*density == "compact") {
++      g_kestrel_tab_density.store(
++          static_cast<int>(KestrelTabDensity::kCompact));
++    } else if (*density == "standard") {
++      g_kestrel_tab_density.store(
++          static_cast<int>(KestrelTabDensity::kStandard));
++    } else {
++      g_kestrel_tab_density.store(static_cast<int>(KestrelTabDensity::kHelium));
++    }
++  }
++  if (std::optional<bool> hide = dict.FindBool("hide_tab_search")) {
++    g_kestrel_hide_tab_search.store(*hide);
++  }
++}
++
++}  // namespace
++
++KestrelTabDensity GetKestrelTabDensity() {
++  EnsureKestrelLayoutConfigInitialized();
++  return static_cast<KestrelTabDensity>(g_kestrel_tab_density.load());
++}
++
++void SetKestrelTabDensity(KestrelTabDensity density) {
++  g_kestrel_layout_initialized.store(true);
++  g_kestrel_tab_density.store(static_cast<int>(density));
++}
++
++bool ShouldKestrelHideTabSearch() {
++  EnsureKestrelLayoutConfigInitialized();
++  return g_kestrel_hide_tab_search.load();
++}
++
++void SetKestrelHideTabSearch(bool hide) {
++  g_kestrel_layout_initialized.store(true);
++  g_kestrel_hide_tab_search.store(hide);
++}
++
+ #if BUILDFLAG(IS_CHROMEOS)
+ #include "chromeos/constants/chromeos_features.h"
+@@ -112,18 +180,29 @@
+     case LayoutConstant::kTabCloseButtonSize:
+       return touch_ui ? 24 : (features::IsRoundedIconsEnabled() ? 14 : 16);
+-    case LayoutConstant::kTabHeight:
+-      return 30 + GetLayoutConstant(LayoutConstant::kTabstripToolbarOverlap);
++    case LayoutConstant::kTabHeight: {
++      const KestrelTabDensity density = GetKestrelTabDensity();
++      const int base_height =
++          density == KestrelTabDensity::kCompact
++              ? 28
++              : (density == KestrelTabDensity::kStandard ? 34 : 31);
++      return base_height +
++             GetLayoutConstant(LayoutConstant::kTabstripToolbarOverlap);
++    }
+     case LayoutConstant::kTabStripHeight:
+       return GetLayoutConstant(LayoutConstant::kTabHeight) +
+              GetLayoutConstant(LayoutConstant::kTabStripPadding);
+     case LayoutConstant::kTabStripPadding:
+-      return 4;
++      return GetKestrelTabDensity() == KestrelTabDensity::kCompact ? 3 : 4;
+     case LayoutConstant::kTabSeparatorHeight:
+-      return touch_ui ? 24 : 20;
++      return touch_ui ? 24 : 16;
+     case LayoutConstant::kTabPreTitlePadding:
+       return 8;
+-    case LayoutConstant::kTabVerticalPadding:
+-      return 6;
++    case LayoutConstant::kTabVerticalPadding: {
++      const KestrelTabDensity density = GetKestrelTabDensity();
++      return density == KestrelTabDensity::kCompact
++                 ? 4
++                 : (density == KestrelTabDensity::kStandard ? 6 : 5);
++    }
+     case LayoutConstant::kTabHorizontalPadding:
+-      return 8;
++      return GetKestrelTabDensity() == KestrelTabDensity::kCompact ? 6 : 8;
+     case LayoutConstant::kTabStackDistance:
+--- a/chrome/browser/ui/tabs/tab_style.cc
++++ b/chrome/browser/ui/tabs/tab_style.cc
+@@ -97,8 +97,8 @@
+ int TabStyle::GetTopCornerRadius() const {
+-  return 10;
++  return 8;
+ }
+ 
+ int TabStyle::GetBottomCornerRadius() const {
+-  return 12;
++  return 8;
+ }
+--- a/chrome/browser/ui/views/tabs/common/horizontal_tab_style_views.cc
++++ b/chrome/browser/ui/views/tabs/common/horizontal_tab_style_views.cc
+@@ -91,7 +91,10 @@
+                                    tab_style()->GetSeparatorSize().width()) *
+                                   scale;
+ 
+-  // Selected, hover, and inactive tab fills are a detached squarcle tab.
+-  if (path_type == TabStyle::PathType::kHighlight ||
++  // Helium-style floating rounded-rect tabs (8px corner radius, zero flared
++  // bottom skirt, subtle 3-4px inset from top and bottom).
++  if (path_type == TabStyle::PathType::kActiveTab ||
++      path_type == TabStyle::PathType::kBorder ||
++      path_type == TabStyle::PathType::kHighlight ||
+       path_type == TabStyle::PathType::kHitTest) {
+     float top_left_corner_radius = content_corner_radius;
+@@ -115,4 +118,25 @@
+                 GetLayoutConstant(LayoutConstant::kTabStripPadding) * scale;
+ 
+     float right = aligned_bounds.right() - extension_corner_radius;
+-    const int bottom = top + tab_height;
++    float bottom = top + tab_height;
++
++    const float stroke_adjustment = stroke_thickness * scale;
++    if (path_type == TabStyle::PathType::kActiveTab ||
++        path_type == TabStyle::PathType::kBorder) {
++      if (!delegate_->IsRightSplitTab()) {
++        left += 0.5f * stroke_adjustment;
++      }
++      if (!delegate_->IsLeftSplitTab()) {
++        right -= 0.5f * stroke_adjustment;
++      }
++      top += 0.5f * stroke_adjustment;
++      bottom -= 0.5f * stroke_adjustment;
++      top_left_corner_radius =
++          std::max(0.0f, top_left_corner_radius - 0.5f * stroke_adjustment);
++      top_right_corner_radius =
++          std::max(0.0f, top_right_corner_radius - 0.5f * stroke_adjustment);
++      bottom_left_corner_radius =
++          std::max(0.0f, bottom_left_corner_radius - 0.5f * stroke_adjustment);
++      bottom_right_corner_radius =
++          std::max(0.0f, bottom_right_corner_radius - 0.5f * stroke_adjustment);
++    }
+--- a/chrome/browser/ui/tabs/tab_strip_prefs.cc
++++ b/chrome/browser/ui/tabs/tab_strip_prefs.cc
+@@ -23,7 +23,7 @@
+ void RegisterProfilePrefs(user_prefs::PrefRegistrySyncable* registry) {
+-  registry->RegisterBooleanPref(prefs::kTabSearchPinnedToTabstrip, true);
+-  registry->RegisterBooleanPref(prefs::kOrganizerPanelPinnedToTabstrip, true);
+-  registry->RegisterBooleanPref(prefs::kEverythingMenuPinnedToTabstrip, true);
++  registry->RegisterBooleanPref(prefs::kTabSearchPinnedToTabstrip, false);
++  registry->RegisterBooleanPref(prefs::kOrganizerPanelPinnedToTabstrip, false);
++  registry->RegisterBooleanPref(prefs::kEverythingMenuPinnedToTabstrip, false);
+   registry->RegisterBooleanPref(prefs::kTabScrollButtonsPinnedToTabstrip, true);
+--- a/chrome/browser/ui/views/tabs/shared/tab_strip_combo_button.cc
++++ b/chrome/browser/ui/views/tabs/shared/tab_strip_combo_button.cc
+@@ -159,6 +159,14 @@
+   const bool is_tab_search_visible =
+-      IsTabSearchPinned() || show_tab_search_ephemerally_;
++      !ShouldKestrelHideTabSearch() &&
++      (IsTabSearchPinned() || show_tab_search_ephemerally_);
+   update_button_visibility(GetEndButtonActionItem(), end_button_animation_,
+                            is_tab_search_visible);
++  if (end_button_) {
++    end_button_->SetVisible(is_tab_search_visible);
++  }
++  const bool any_visible =
++      (start_button_ && start_button_->GetVisible()) ||
++      (end_button_ && end_button_->GetVisible());
++  SetVisible(any_visible);
+ }
+ 
+@@ -445,5 +453,8 @@
+ bool TabStripComboButton::IsTabSearchPinned() {
++  if (ShouldKestrelHideTabSearch()) {
++    return false;
++  }
+   PrefService* prefs = browser_->GetProfile()->GetPrefs();
+   return prefs->GetBoolean(prefs::kTabSearchPinnedToTabstrip);
+ }
+--- a/chrome/browser/ui/webui/settings/settings_ui.cc
++++ b/chrome/browser/ui/webui/settings/settings_ui.cc
+@@ -56,5 +56,6 @@
+ #include "chrome/browser/ui/hats/hats_service.h"
+ #include "chrome/browser/ui/hats/hats_service_factory.h"
++#include "chrome/browser/ui/layout_constants.h"
+ #include "chrome/browser/ui/managed_ui.h"
+ #include "chrome/browser/ui/passwords/ui_utils.h"
+@@ -276,6 +277,41 @@
+     d.Set("adblocker", true);
+     d.Set("custom_ui", true);
+     d.Set("extension_support", true);
++    d.Set("tab_density", "helium");
++    d.Set("hide_tab_search", true);
++    d.Set("show_bookmarks_bar", false);
+     d.Set("renderer_process_limit", 4);
+     d.Set("v8_max_old_space_mb", 512);
+     d.Set("widevine_path", "auto");
+     d.Set("extra_flags", base::ListValue());
+     return d;
+   }
++
++  void ApplyRuntimePrefs(const base::DictValue& cfg) {
++    if (const std::string* density = cfg.FindString("tab_density")) {
++      if (*density == "compact") {
++        SetKestrelTabDensity(KestrelTabDensity::kCompact);
++      } else if (*density == "standard") {
++        SetKestrelTabDensity(KestrelTabDensity::kStandard);
++      } else {
++        SetKestrelTabDensity(KestrelTabDensity::kHelium);
++      }
++    }
++    std::optional<bool> hide_tab_search = cfg.FindBool("hide_tab_search");
++    if (hide_tab_search.has_value()) {
++      SetKestrelHideTabSearch(*hide_tab_search);
++    }
++    if (!web_ui()) {
++      return;
++    }
++    Profile* profile = Profile::FromWebUI(web_ui());
++    if (!profile || !profile->GetPrefs()) {
++      return;
++    }
++    if (hide_tab_search.has_value()) {
++      profile->GetPrefs()->SetBoolean(prefs::kTabSearchPinnedToTabstrip,
++                                      !*hide_tab_search);
++    }
++    if (std::optional<bool> show_bookmarks =
++            cfg.FindBool("show_bookmarks_bar")) {
++      profile->GetPrefs()->SetBoolean("bookmark_bar.show_on_all_tabs",
++                                      *show_bookmarks);
++    }
++  }
+ 
+@@ -328,11 +364,13 @@
+     SaveConfig(cfg);
++    ApplyRuntimePrefs(cfg);
+     ResolveJavascriptCallback(args[0], cfg);
+   }
+ 
+   void HandleResetConfig(const base::ListValue& args) {
+     AllowJavascript();
+     if (args.empty()) return;
+     base::DictValue cfg = DefaultConfig();
+     SaveConfig(cfg);
++    ApplyRuntimePrefs(cfg);
+     ResolveJavascriptCallback(args[0], cfg);
+   }
+--- a/chrome/browser/resources/settings/settings_main/settings_main.html
++++ b/chrome/browser/resources/settings/settings_main/settings_main.html
+@@ -142,4 +142,33 @@
+             <input type="checkbox" class="kestrel-toggle" data-key="custom_ui" .checked="${this.kestrelConfig_.custom_ui}" @change="${this.onKestrelToggleChange_}">
+           </div>
+         </div>
++
++        <div class="kestrel-section-label">TABS &amp; TOOLBAR CUSTOMIZATION</div>
++        <div class="kestrel-card">
++          <div class="kestrel-row">
++            <div class="kestrel-meta">
++              <div class="kestrel-name">Floating Tab Density &amp; Shape</div>
++              <div class="kestrel-desc">Helium floating rounded-rect tabs (8px radius, zero bottom flare, 3–4px vertical inset)</div>
++            </div>
++            <select class="kestrel-select" data-key="tab_density" .value="${this.kestrelConfig_.tab_density}" @change="${this.onKestrelSelectChange_}">
++              <option value="helium">Helium Floating (Balanced — Default)</option>
++              <option value="compact">Compact Floating (Ultra-Slim)</option>
++              <option value="standard">Standard Floating (Spacious)</option>
++            </select>
++          </div>
++          <div class="kestrel-row">
++            <div class="kestrel-meta">
++              <div class="kestrel-name">Hide Left Tab-Search Chevron Button</div>
++              <div class="kestrel-desc">Remove the top-left tab-search dropdown chevron for a cleaner Helium tab strip</div>
++            </div>
++            <input type="checkbox" class="kestrel-toggle" data-key="hide_tab_search" .checked="${this.kestrelConfig_.hide_tab_search}" @change="${this.onKestrelToggleChange_}">
++          </div>
++          <div class="kestrel-row">
++            <div class="kestrel-meta">
++              <div class="kestrel-name">Show Bookmarks Bar</div>
++              <div class="kestrel-desc">Display the bookmarks bar below the address bar on all tabs</div>
++            </div>
++            <input type="checkbox" class="kestrel-toggle" data-key="show_bookmarks_bar" .checked="${this.kestrelConfig_.show_bookmarks_bar}" @change="${this.onKestrelToggleChange_}">
++          </div>
++        </div>
+       </div>
+--- a/chrome/browser/resources/settings/settings_main/settings_main.ts
++++ b/chrome/browser/resources/settings/settings_main/settings_main.ts
+@@ -45,3 +45,6 @@
+   extension_support: boolean;
+   custom_ui: boolean;
++  tab_density: string;
++  hide_tab_search: boolean;
++  show_bookmarks_bar: boolean;
+ }
+@@ -142,3 +145,6 @@
+     extension_support: true,
+     custom_ui: true,
++    tab_density: 'helium',
++    hide_tab_search: true,
++    show_bookmarks_bar: false,
+   };

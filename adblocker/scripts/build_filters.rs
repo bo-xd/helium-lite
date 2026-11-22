@@ -208,6 +208,33 @@ const BUILTIN_ADS: &[&str] = &[
     "data.ads.oppomobile.com",
     "iadsdk.apple.com",
     "api-adservices.apple.com",
+    "advertising-api-eu.amazon.com",
+    "aan.amazon.com",
+    "fls-na.amazon.com",
+    "bingads.microsoft.com",
+    "ads.microsoft.com",
+    "c.bing.com",
+    "liftoff.io",
+    "advertising.yahoo.com",
+    "mc.yandex.ru",
+    "advertising.yandex.ru",
+    "api.fyber.com",
+    "ironsource.mobi",
+    "s.youtube.com",
+    "redirector.googlevideo.com",
+    "pangleglobal.com",
+    "mineralt.io",
+    "clickadu.com",
+    "dai.google.com",
+    "g.jwpsrv.com",
+    "ssl.p.jwpcdn.com",
+    "prd.jwpltx.com",
+    "mssl.fwmrm.net",
+    "bea4.v.fwmrm.net",
+    "2975c.v.fwmrm.net",
+    "metrics.brightcove.com",
+    "partnerstack.com",
+    "api.partnerstack.com",
 ];
 
 const BUILTIN_AD_PATHS: &[&str] = &[
@@ -216,6 +243,7 @@ const BUILTIN_AD_PATHS: &[&str] = &[
     "/js/pagead.js",
     "/js/widget/ads.js",
     "/pagead/js/",
+    "||vk.com/rtrg",
 ];
 
 const BUILTIN_PRIVACY: &[&str] = &[
@@ -342,6 +370,69 @@ const BUILTIN_PRIVACY: &[&str] = &[
     "books-analytics-events.apple.com",
     "weather-analytics-events.apple.com",
     "notes-analytics-events.apple.com",
+    "tagmanager.google.com",
+    "analytics.adobe.io",
+    "metrics.adobe.com",
+    "app.posthog.com",
+    "eu.posthog.com",
+    "us.i.posthog.com",
+    "rudderstack.com",
+    "snowplowanalytics.com",
+    "tracker.snowplowanalytics.com",
+    "fingerprintjs.com",
+    "onetag-sys.com",
+    "bnc.lt",
+    "browser-intake-datadoghq.com",
+    "rum.browser-intake-datadoghq.com",
+    "graph.facebook.com",
+    "tr.facebook.com",
+    "graph.instagram.com",
+    "i.instagram.com",
+    "ads.snapchat.com",
+    "ads-api.x.com",
+    "analytics.x.com",
+    "ads.x.com",
+    "pixel.redditmedia.com",
+    "d.reddit.com",
+    "mon.tiktokv.com",
+    "widgets.pinterest.com",
+    "pixel.quora.com",
+    "qevents.quora.com",
+    "px.srvcs.tumblr.com",
+    "ads.vk.com",
+    "ad.mail.ru",
+    "top-fwz1.mail.ru",
+    "advertising.apple.com",
+    "metrics.apple.com",
+    "xp.apple.com",
+    "ads.huawei.com",
+    "adlog.vivo.com",
+    "ads-api.vivo.com",
+    "a.lenovo.com",
+    "us.ibs.lgappstv.com",
+    "ngfts.lge.com",
+    "yumenetworks.com",
+    "smartclip.com",
+    "settings-win.data.microsoft.com",
+    "vortex.data.microsoft.com",
+    "vortex-win.data.microsoft.com",
+    "watson.telemetry.microsoft.com",
+    "telemetry.microsoft.com",
+    "browser.events.data.msn.com",
+    "device-metrics-us.amazon.com",
+    "device-metrics-us-2.amazon.com",
+    "mads-eu.amazon.com",
+    "ads.roku.com",
+    "amoeba.web.roku.com",
+    "ads.vizio.com",
+    "tvinteractive.tv",
+    "cdn.dynamicyield.com",
+    "events.launchdarkly.com",
+    "clientstream.launchdarkly.com",
+    "list-manage.com",
+    "track.hubspot.com",
+    "click.mailchimp.com",
+    "js.driftt.com",
 ];
 
 const BUILTIN_MALWARE: &[&str] = &[
@@ -551,7 +642,8 @@ fn map_resource_type(opt: &str) -> Option<&'static str> {
 }
 
 fn parse_abp_line(line: &str, default_types: &[&'static str]) -> Option<ParsedRule> {
-    if line.contains("##")
+    if line.starts_with("@@")
+        || line.contains("##")
         || line.contains("#@#")
         || line.contains("#?#")
         || line.contains("#$#")
@@ -561,11 +653,7 @@ fn parse_abp_line(line: &str, default_types: &[&'static str]) -> Option<ParsedRu
         return None;
     }
 
-    let (is_allow, body) = if let Some(rest) = line.strip_prefix("@@") {
-        (true, rest)
-    } else {
-        (false, line)
-    };
+    let (is_allow, body) = (false, line);
 
     let (pattern_raw, opts_raw) = match body.rfind('$') {
         Some(pos) if pos > 0 => (&body[..pos], Some(&body[pos + 1..])),
