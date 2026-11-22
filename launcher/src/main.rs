@@ -43,12 +43,12 @@ impl Default for Config {
             webrtc_privacy: true,
             tab_sleeping: true,
             hardware_accel: true,
-            widevine_drm: false,
+            widevine_drm: true,
             adblocker: true,
             custom_ui: true,
             extension_support: true,
-            renderer_process_limit: 3,
-            v8_max_old_space_mb: 384,
+            renderer_process_limit: 4,
+            v8_max_old_space_mb: 512,
             widevine_path: "auto".to_string(),
             extra_flags: Vec::new(),
         }
@@ -621,20 +621,39 @@ fn resolve_browser_command(configured: &str) -> Result<Vec<String>, String> {
 }
 
 fn resolve_widevine_path(configured: &str) -> Option<PathBuf> {
+    let pick_bundled_dir = |base: PathBuf| -> Option<PathBuf> {
+        if base.join("manifest.json").is_file() {
+            return Some(base);
+        }
+        if let Ok(entries) = fs::read_dir(&base) {
+            for entry in entries.flatten() {
+                let p = entry.path();
+                if p.is_dir() && p.join("manifest.json").is_file() {
+                    return Some(p);
+                }
+            }
+        }
+        None
+    };
+
     if !configured.is_empty() && configured != "auto" {
         let p = expand_tilde(configured);
-        return if p.exists() { Some(p) } else { None };
+        return pick_bundled_dir(p);
     }
     let home = home_dir();
     let candidates = [
-        home.join(".local/share/kestrel/runtime/WidevineCdm"),
         PathBuf::from("/usr/lib/chromium/WidevineCdm"),
         PathBuf::from("/usr/lib/ungoogled-chromium/WidevineCdm"),
         PathBuf::from("/opt/google/chrome/WidevineCdm"),
         home.join(".config/sh.cider.genten/WidevineCdm"),
         home.join(".config/net.imput.helium/WidevineCdm"),
     ];
-    candidates.into_iter().find(|p| p.exists())
+    for c in candidates {
+        if let Some(found) = pick_bundled_dir(c) {
+            return Some(found);
+        }
+    }
+    None
 }
 
 struct SearchEngineSpec {
@@ -846,7 +865,13 @@ fn ensure_profile_preferences(
 
                 if cfg.strict_security {
                     json_set_obj_key(&mut entries, "https_only_mode_enabled", JsonVal::Bool(true));
+                    json_set_obj_key(&mut entries, "enable_do_not_track", JsonVal::Bool(true));
                     json_set_nested(&mut entries, &["profile", "cookie_controls_mode"], JsonVal::Int(1));
+                    json_set_nested(&mut entries, &["net", "network_prediction_options"], JsonVal::Int(2));
+                    json_set_nested(&mut entries, &["alternate_error_pages", "enabled"], JsonVal::Bool(false));
+                    json_set_nested(&mut entries, &["autofill", "credit_card_enabled"], JsonVal::Bool(false));
+                    json_set_nested(&mut entries, &["payments", "can_make_payment_enabled"], JsonVal::Bool(false));
+                    json_set_nested(&mut entries, &["safebrowsing", "enabled"], JsonVal::Bool(false));
                 }
 
                 if let Some(tpl) = doh_template_url(&cfg.doh_provider) {
@@ -935,10 +960,16 @@ fn install_webstore() -> Result<(), String> {
     Ok(())
 }
 
-fn sync_widevine_symlink(profile_dir: &Path, enabled: bool, widevine_cfg: &str) {
-    let target_link = profile_dir.join("WidevineCdm");
+fn sync_widevine_symlink(enabled: bool, widevine_cfg: &str) {
+    let target_link = home_dir().join(".local/share/kestrel/runtime/WidevineCdm");
     if enabled {
         if let Some(src) = resolve_widevine_path(widevine_cfg) {
+            if let Some(parent) = target_link.parent() {
+                let _ = fs::create_dir_all(parent);
+            }
+            if target_link.is_symlink() {
+                let _ = fs::remove_file(&target_link);
+            }
             if !target_link.exists() {
                 let _ = unix_fs::symlink(src, &target_link);
             }
@@ -983,7 +1014,7 @@ fn build_flags(cfg: &Config, profile_dir: &Path, cache_dir: &Path) -> Vec<String
 
     if cfg.tab_sleeping {
         let (proc_limit, v8_mb) = if cfg.ram_profile.eq_ignore_ascii_case("ultra") {
-            (cfg.renderer_process_limit.min(3), cfg.v8_max_old_space_mb.min(384))
+            (cfg.renderer_process_limit.min(4), cfg.v8_max_old_space_mb.min(512))
         } else {
             (cfg.renderer_process_limit, cfg.v8_max_old_space_mb)
         };
@@ -1242,12 +1273,12 @@ fn run_settings_interactive(mut cfg: Config) -> i32 {
             }
             "11" => {
                 cfg.ram_profile = if cfg.ram_profile == "ultra" {
-                    cfg.renderer_process_limit = 4;
-                    cfg.v8_max_old_space_mb = 512;
+                    cfg.renderer_process_limit = 6;
+                    cfg.v8_max_old_space_mb = 768;
                     "balanced".into()
                 } else {
-                    cfg.renderer_process_limit = 3;
-                    cfg.v8_max_old_space_mb = 384;
+                    cfg.renderer_process_limit = 4;
+                    cfg.v8_max_old_space_mb = 512;
                     "ultra".into()
                 };
                 let _ = save_config(&cfg);
@@ -1387,11 +1418,11 @@ fn run_settings(args: &[String]) -> i32 {
                 }
                 cfg.ram_profile = low.clone();
                 if low == "ultra" {
-                    cfg.renderer_process_limit = 3;
-                    cfg.v8_max_old_space_mb = 384;
-                } else {
                     cfg.renderer_process_limit = 4;
                     cfg.v8_max_old_space_mb = 512;
+                } else {
+                    cfg.renderer_process_limit = 6;
+                    cfg.v8_max_old_space_mb = 768;
                 }
             }
             "doh_provider" => {
@@ -1516,7 +1547,7 @@ fn main() {
     let _ = fs::create_dir_all(&profile_dir);
     let _ = fs::create_dir_all(&cache_dir);
 
-    sync_widevine_symlink(&profile_dir, cfg.widevine_drm, &cfg.widevine_path);
+    sync_widevine_symlink(cfg.widevine_drm, &cfg.widevine_path);
     let flags = build_flags(&cfg, &profile_dir, &cache_dir);
 
     let cmd = match resolve_browser_command(&cfg.browser_binary) {

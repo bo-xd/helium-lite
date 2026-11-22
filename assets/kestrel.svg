@@ -1,21 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
-  <defs>
-    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#0f172a"/>
-      <stop offset="100%" stop-color="#1e293b"/>
-    </linearGradient>
-    <linearGradient id="wing" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#38bdf8"/>
-      <stop offset="55%" stop-color="#0ea5e9"/>
-      <stop offset="100%" stop-color="#6366f1"/>
-    </linearGradient>
-    <linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="0%">
-      <stop offset="0%" stop-color="#f59e0b"/>
-      <stop offset="100%" stop-color="#fbbf24"/>
-    </linearGradient>
-  </defs>
-  <rect x="6" y="6" width="116" height="116" rx="28" fill="url(#bg)" stroke="#334155" stroke-width="2"/>
-  <path d="M26 78 C38 42, 66 24, 102 28 C84 40, 74 52, 68 64 L96 62 C78 74, 62 84, 46 98 C48 86, 46 78, 40 74 Z" fill="url(#wing)"/>
-  <path d="M58 48 L88 34 L72 56 Z" fill="#e0f2fe" opacity="0.85"/>
-  <path d="M30 88 L46 74 L42 96 Z" fill="url(#accent)"/>
+  <rect x="6" y="6" width="116" height="116" rx="26" fill="#111317" stroke="#232730" stroke-width="2"/>
+  <path d="M24 84 L48 36 L104 26 L74 58 L98 58 L54 98 L58 76 Z" fill="#e6e9ef"/>
+  <path d="M48 36 L88 28 L68 50 L46 54 Z" fill="#e09f3e"/>
+  <path d="M28 92 L50 74 L44 98 Z" fill="#e09f3e"/>
 </svg>

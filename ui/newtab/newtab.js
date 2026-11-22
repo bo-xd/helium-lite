@@ -16,7 +16,7 @@ const DEFAULT_SHORTCUTS = [
 
 const searchForm = document.getElementById("searchForm");
 const searchInput = document.getElementById("searchInput");
-const engineButtons = Array.from(document.querySelectorAll(".pill"));
+const engineTabs = Array.from(document.querySelectorAll(".eng-tab"));
 const shortcutsGrid = document.getElementById("shortcutsGrid");
 const addForm = document.getElementById("addForm");
 const addTitle = document.getElementById("addTitle");
@@ -29,8 +29,8 @@ let shortcuts = [...DEFAULT_SHORTCUTS];
 function setEngine(key) {
   if (!ENGINES[key]) key = "ddg";
   activeEngine = key;
-  searchInput.placeholder = `Search with ${ENGINES[key].name} or enter URL…`;
-  engineButtons.forEach((btn) => {
+  searchInput.placeholder = `Search with ${ENGINES[key].name} or enter URL`;
+  engineTabs.forEach((btn) => {
     btn.classList.toggle("active", btn.dataset.engine === key);
   });
 }
@@ -50,14 +50,23 @@ function renderShortcuts() {
   shortcutsGrid.textContent = "";
 
   shortcuts.forEach((item, idx) => {
-    const card = document.createElement("a");
-    card.className = "shortcut-card";
-    card.href = item.url;
+    const cell = document.createElement("a");
+    cell.className = "shortcut-cell";
+    cell.href = item.url;
+
+    const mono = document.createElement("span");
+    mono.className = "shortcut-mono";
+    mono.textContent = (item.title || "?").charAt(0).toUpperCase();
+
+    const title = document.createElement("span");
+    title.className = "shortcut-title";
+    title.textContent = item.title;
 
     const del = document.createElement("button");
     del.type = "button";
     del.className = "shortcut-del";
     del.title = "Remove shortcut";
+    del.setAttribute("aria-label", `Remove ${item.title}`);
     del.textContent = "×";
     del.addEventListener("click", (e) => {
       e.preventDefault();
@@ -67,24 +76,16 @@ function renderShortcuts() {
       renderShortcuts();
     });
 
-    const badge = document.createElement("span");
-    badge.className = "shortcut-badge";
-    badge.textContent = (item.title || "?").charAt(0).toUpperCase();
-
-    const title = document.createElement("span");
-    title.className = "shortcut-title";
-    title.textContent = item.title;
-
-    card.append(del, badge, title);
-    shortcutsGrid.appendChild(card);
+    cell.append(mono, title, del);
+    shortcutsGrid.appendChild(cell);
   });
 
   const addBtn = document.createElement("button");
   addBtn.type = "button";
-  addBtn.className = "shortcut-card shortcut-add";
+  addBtn.className = "shortcut-cell shortcut-add";
 
   const plus = document.createElement("span");
-  plus.className = "shortcut-badge";
+  plus.className = "shortcut-mono";
   plus.textContent = "+";
 
   const label = document.createElement("span");
@@ -117,7 +118,7 @@ searchForm.addEventListener("submit", (e) => {
   }
 });
 
-engineButtons.forEach((btn) => {
+engineTabs.forEach((btn) => {
   btn.addEventListener("click", () => {
     setEngine(btn.dataset.engine);
     if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {

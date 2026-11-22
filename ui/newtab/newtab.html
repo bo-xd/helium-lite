@@ -8,57 +8,49 @@
 </head>
 <body>
   <main class="shell">
-    <header class="brand">
-      <svg class="crest" viewBox="0 0 64 64" width="52" height="52" aria-hidden="true">
-        <defs>
-          <linearGradient id="kestrelGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stop-color="#38bdf8"/>
-            <stop offset="100%" stop-color="#6366f1"/>
-          </linearGradient>
-        </defs>
-        <path d="M10 18 L54 10 L38 30 L52 34 L26 54 L32 34 L12 30 Z" fill="url(#kestrelGrad)"/>
-      </svg>
-      <h1>Kestrel</h1>
+    <header class="topbar">
+      <div class="brand">
+        <svg class="crest" viewBox="0 0 32 32" width="22" height="22" aria-hidden="true">
+          <path d="M3 9 L29 4 L20 15 L28 17 L13 28 L16 17 L4 15 Z" fill="#e09f3e"/>
+        </svg>
+        <h1>Kestrel</h1>
+      </div>
+      <div class="readout" aria-label="Active protections">Shield 25,576 &middot; Quad9 &middot; DRM</div>
     </header>
 
-    <section class="search-wrap">
+    <section class="command-zone">
       <form id="searchForm" class="search-bar" autocomplete="off">
         <input
           type="text"
           id="searchInput"
-          placeholder="Search with DuckDuckGo or enter URL…"
+          placeholder="Search or enter URL"
           autofocus
           spellcheck="false"
+          aria-label="Search or enter URL"
         >
-        <button type="submit" class="search-btn" aria-label="Search">Go</button>
+        <button type="submit" class="search-btn">Go</button>
       </form>
-      <div class="engines" id="enginePills" role="group" aria-label="Search engine">
-        <button type="button" class="pill active" data-engine="ddg">DuckDuckGo</button>
-        <button type="button" class="pill" data-engine="google">Google</button>
-        <button type="button" class="pill" data-engine="brave">Brave</button>
-        <button type="button" class="pill" data-engine="startpage">Startpage</button>
-      </div>
+
+      <nav class="engines" id="engineTabs" aria-label="Search engine">
+        <button type="button" class="eng-tab active" data-engine="ddg">DuckDuckGo</button>
+        <button type="button" class="eng-tab" data-engine="google">Google</button>
+        <button type="button" class="eng-tab" data-engine="brave">Brave</button>
+        <button type="button" class="eng-tab" data-engine="startpage">Startpage</button>
+      </nav>
     </section>
 
-    <section class="shortcuts-section">
+    <section class="shortcuts-section" aria-label="Pinned shortcuts">
       <div class="shortcuts-grid" id="shortcutsGrid"></div>
 
       <form id="addForm" class="add-form hidden" autocomplete="off">
-        <input type="text" id="addTitle" placeholder="Name (e.g. GitHub)" maxlength="24" required>
-        <input type="text" id="addUrl" placeholder="URL (e.g. https://github.com)" required>
+        <input type="text" id="addTitle" placeholder="Label" maxlength="24" required aria-label="Shortcut label">
+        <input type="text" id="addUrl" placeholder="https://example.com" required aria-label="Shortcut URL">
         <div class="add-actions">
           <button type="submit" class="btn-primary">Save</button>
           <button type="button" id="cancelAdd" class="btn-ghost">Cancel</button>
         </div>
       </form>
     </section>
-
-    <footer class="status-bar" aria-label="Active Kestrel protections">
-      <span class="status-pill"><span class="dot ok"></span>Kestrel Shield: 25,576 rules</span>
-      <span class="status-pill"><span class="dot accent"></span>Ultra Low RAM</span>
-      <span class="status-pill"><span class="dot accent"></span>Strict Security</span>
-      <span class="status-pill"><span class="dot ok"></span>Quad9 DoH</span>
-    </footer>
   </main>
   <script src="newtab.js"></script>
 </body>

@@ -1,20 +1,20 @@
 {
   "manifest_version": 3,
-  "name": "Kestrel Obsidian Theme",
-  "version": "1.0.0",
-  "description": "Deep obsidian and slate dark browser theme for Kestrel.",
+  "name": "Kestrel Matte Graphite Theme",
+  "version": "1.1.0",
+  "description": "Matte graphite browser theme for Kestrel.",
   "theme": {
     "colors": {
-      "frame": [12, 15, 21],
-      "frame_inactive": [10, 13, 18],
-      "toolbar": [19, 24, 34],
-      "tab_text": [241, 245, 249],
-      "tab_background_text": [148, 163, 184],
-      "omnibox_background": [26, 33, 46],
-      "omnibox_text": [241, 245, 249],
-      "ntp_background": [12, 15, 21],
-      "ntp_text": [241, 245, 249],
-      "toolbar_button_icon": [148, 163, 184],
+      "frame": [17, 19, 23],
+      "frame_inactive": [14, 16, 20],
+      "toolbar": [24, 27, 33],
+      "tab_text": [230, 233, 239],
+      "tab_background_text": [139, 147, 161],
+      "omnibox_background": [17, 19, 23],
+      "omnibox_text": [230, 233, 239],
+      "ntp_background": [17, 19, 23],
+      "ntp_text": [230, 233, 239],
+      "toolbar_button_icon": [139, 147, 161],
       "bookmark_text": [203, 213, 225]
     }
   }
