@@ -1,39 +1,60 @@
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
 const ADS_URLS: &[(&str, &str)] = &[
-    ("easylist", "https://easylist.to/easylist/easylist.txt"),
+    (
+        "ublock-quick-fixes",
+        "https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/quick-fixes.txt",
+    ),
+    (
+        "ublock-filters",
+        "https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/filters.txt",
+    ),
+    (
+        "ublock-unbreak",
+        "https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/unbreak.txt",
+    ),
     (
         "peterlowe",
         "https://pgl.yoyo.org/adservers/serverlist.php?hostformat=hosts&showintro=0&mimetype=plaintext",
     ),
+    ("easylist", "https://easylist.to/easylist/easylist.txt"),
 ];
 
-const PRIVACY_URLS: &[(&str, &str)] =
-    &[("easyprivacy", "https://easylist.to/easylist/easyprivacy.txt")];
+const PRIVACY_URLS: &[(&str, &str)] = &[
+    (
+        "ublock-privacy",
+        "https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/privacy.txt",
+    ),
+    ("easyprivacy", "https://easylist.to/easylist/easyprivacy.txt"),
+];
 
 const MALWARE_URLS: &[(&str, &str)] = &[
     (
-        "urlhaus",
-        "https://malware-filter.gitlab.io/malware-filter/urlhaus-filter-online.txt",
-    ),
-    (
         "ublock-badware",
         "https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/badware.txt",
+    ),
+    (
+        "urlhaus",
+        "https://malware-filter.gitlab.io/malware-filter/urlhaus-filter-online.txt",
     ),
 ];
 
 const ANNOYANCES_URLS: &[(&str, &str)] = &[
     (
-        "fanboy-annoyance",
-        "https://easylist.to/easylist/fanboy-annoyance.txt",
+        "ublock-cookies",
+        "https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/annoyances-cookies.txt",
     ),
     (
         "fanboy-cookie",
         "https://secure.fanboy.co.nz/fanboy-cookiemonster.txt",
+    ),
+    (
+        "fanboy-annoyance",
+        "https://easylist.to/easylist/fanboy-annoyance.txt",
     ),
 ];
 
@@ -273,11 +294,106 @@ const BUILTIN_ANNOYANCES: &[&str] = &[
     "cdn.privacy-mgmt.com",
 ];
 
+const BUILTIN_COSMETIC_GLOBAL: &[&str] = &[
+    "ins.adsbygoogle",
+    "iframe[id^='google_ads_iframe']",
+    "iframe[src*='doubleclick.net']",
+    "iframe[src*='googlesyndication.com']",
+    "div[id^='div-gpt-ad']",
+    "div[data-google-query-id]",
+    "[data-ad-slot]",
+    "[data-ad-unit]",
+    "[data-testid='ad']",
+    ".ad-banner",
+    ".ad-container",
+    ".ad-wrapper",
+    ".ad-slot",
+    ".ad-unit",
+    ".advertisement",
+    ".sponsored-content",
+    "#taboola-below-article-thumbnails",
+    ".trc_rbox_outer",
+    ".OUTBRAIN",
+    "#onetrust-consent-sdk",
+    "#CybotCookiebotDialog",
+    ".cc-window",
+    ".cookie-banner",
+    "#cookie-banner",
+];
+
+const BUILTIN_COSMETIC_YOUTUBE: &[&str] = &[
+    "ytd-ad-slot-renderer",
+    "ytd-in-feed-ad-layout-renderer",
+    "ytd-banner-promo-renderer",
+    "ytd-DisplayAdRenderer",
+    "ytd-statement-banner-renderer",
+    "ytd-promoted-sparkles-web-renderer",
+    "ytd-promoted-video-renderer",
+    "ytd-compact-promoted-video-renderer",
+    "ytd-player-legacy-desktop-watch-ads-renderer",
+    "ytd-engagement-panel-section-list-renderer[target-id='engagement-panel-ads']",
+    "#masthead-ad",
+    "#player-ads",
+    ".ytp-ad-overlay-container",
+    ".ytp-ad-message-container",
+    ".ytp-ad-image-overlay",
+    "ytd-merch-shelf-renderer",
+];
+
 #[derive(Clone, Eq, PartialEq, Hash)]
 struct ParsedRule {
+    action_type: &'static str,
+    priority: u8,
     url_filter: String,
     domain_type: Option<&'static str>,
     resource_types: Vec<&'static str>,
+}
+
+struct CosmeticStore {
+    global: Vec<String>,
+    global_seen: HashSet<String>,
+    domains: BTreeMap<String, Vec<String>>,
+    domain_seen: HashSet<String>,
+}
+
+impl CosmeticStore {
+    fn new() -> Self {
+        let mut s = Self {
+            global: Vec::new(),
+            global_seen: HashSet::new(),
+            domains: BTreeMap::new(),
+            domain_seen: HashSet::new(),
+        };
+        for &sel in BUILTIN_COSMETIC_GLOBAL {
+            s.add_global(sel);
+        }
+        for &sel in BUILTIN_COSMETIC_YOUTUBE {
+            s.add_domain("youtube.com", sel);
+        }
+        s
+    }
+
+    fn add_global(&mut self, sel: &str) {
+        if self.global.len() >= 1500 {
+            return;
+        }
+        if self.global_seen.insert(sel.to_string()) {
+            self.global.push(sel.to_string());
+        }
+    }
+
+    fn add_domain(&mut self, domain: &str, sel: &str) {
+        if self.domain_seen.len() >= 1800 {
+            return;
+        }
+        let key = format!("{domain}##{sel}");
+        if self.domain_seen.insert(key) {
+            self.domains
+                .entry(domain.to_string())
+                .or_default()
+                .push(sel.to_string());
+        }
+    }
 }
 
 fn is_valid_domain(s: &str) -> bool {
@@ -290,6 +406,58 @@ fn is_valid_domain(s: &str) -> bool {
     }
     s.chars()
         .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-')
+}
+
+fn is_valid_css_selector(sel: &str) -> bool {
+    if sel.len() < 2 || sel.len() > 120 || !sel.is_ascii() {
+        return false;
+    }
+    if sel.contains(":has-text")
+        || sel.contains(":-abp-")
+        || sel.contains(":xpath")
+        || sel.contains(":upward")
+        || sel.contains(":style")
+        || sel.contains(":matches-css")
+        || sel.contains(":matches-path")
+        || sel.contains(":min-text-length")
+        || sel.contains(":remove")
+        || sel.contains("+js(")
+        || sel.contains("##")
+        || sel.contains('{')
+        || sel.contains('}')
+        || sel.contains('\\')
+        || sel.contains('"')
+    {
+        return false;
+    }
+    true
+}
+
+fn parse_cosmetic_line(line: &str, store: &mut CosmeticStore) {
+    if line.contains("#@#") || line.contains("#?#") || line.contains("#$#") {
+        return;
+    }
+    let Some(pos) = line.find("##") else {
+        return;
+    };
+    let left = line[..pos].trim();
+    let right = line[pos + 2..].trim();
+    if !is_valid_css_selector(right) {
+        return;
+    }
+    if left.is_empty() {
+        store.add_global(right);
+        return;
+    }
+    for d in left.split(',') {
+        let d = d.trim().to_ascii_lowercase();
+        if d.starts_with('~') || d.ends_with(".*") {
+            continue;
+        }
+        if is_valid_domain(&d) {
+            store.add_domain(&d, right);
+        }
+    }
 }
 
 fn map_resource_type(opt: &str) -> Option<&'static str> {
@@ -309,22 +477,27 @@ fn map_resource_type(opt: &str) -> Option<&'static str> {
 }
 
 fn parse_abp_line(line: &str, default_types: &[&'static str]) -> Option<ParsedRule> {
-    if line.starts_with("@@")
-        || line.contains("##")
+    if line.contains("##")
         || line.contains("#@#")
         || line.contains("#?#")
+        || line.contains("#$#")
         || line.contains("$@$")
         || !line.is_ascii()
     {
         return None;
     }
 
-    let (pattern_raw, opts_raw) = match line.rfind('$') {
-        Some(pos) if pos > 0 => (&line[..pos], Some(&line[pos + 1..])),
-        _ => (line, None),
+    let (is_allow, body) = if let Some(rest) = line.strip_prefix("@@") {
+        (true, rest)
+    } else {
+        (false, line)
     };
 
-    // Skip regex rules /regex/
+    let (pattern_raw, opts_raw) = match body.rfind('$') {
+        Some(pos) if pos > 0 => (&body[..pos], Some(&body[pos + 1..])),
+        _ => (body, None),
+    };
+
     if pattern_raw.starts_with('/') && pattern_raw.ends_with('/') && pattern_raw.len() > 2 {
         return None;
     }
@@ -338,23 +511,30 @@ fn parse_abp_line(line: &str, default_types: &[&'static str]) -> Option<ParsedRu
         }
         for opt in opts.split(',') {
             let o = opt.to_ascii_lowercase();
-            if o.is_empty() {
+            if o.is_empty() || o == "important" {
                 continue;
             }
             if o.starts_with('~')
                 || o.starts_with("domain=")
+                || o.starts_with("from=")
+                || o.starts_with("to=")
+                || o.starts_with("denyallow=")
                 || o.starts_with("redirect")
                 || o.starts_with("removeparam")
                 || o.starts_with("csp")
+                || o.starts_with("header")
                 || matches!(
                     o.as_str(),
                     "elemhide"
                         | "generichide"
                         | "specifichide"
+                        | "ehide"
+                        | "ghide"
+                        | "shide"
                         | "document"
+                        | "doc"
                         | "popup"
                         | "popunder"
-                        | "important"
                         | "badfilter"
                         | "all"
                 )
@@ -370,7 +550,6 @@ fn parse_abp_line(line: &str, default_types: &[&'static str]) -> Option<ParsedRu
                     rtypes.push(rt);
                 }
             } else {
-                // Unknown/unsupported option: skip safely
                 return None;
             }
         }
@@ -380,14 +559,18 @@ fn parse_abp_line(line: &str, default_types: &[&'static str]) -> Option<ParsedRu
         rtypes.extend_from_slice(default_types);
     }
 
-    // Domain rule ||domain^ or ||domain/path
+    let action_type = if is_allow { "allow" } else { "block" };
+    let priority = if is_allow { 2 } else { 1 };
+
     if let Some(rest) = pattern_raw.strip_prefix("||") {
-        let host_end = rest.find(|c| c == '^' || c == '/' || c == '*').unwrap_or(rest.len());
+        let host_end = rest
+            .find(|c| c == '^' || c == '/' || c == '*')
+            .unwrap_or(rest.len());
         let host = rest[..host_end].to_ascii_lowercase();
         if !is_valid_domain(&host) {
             return None;
         }
-        if SAFE_EXCLUSIONS.contains(&host.as_str()) {
+        if !is_allow && SAFE_EXCLUSIONS.contains(&host.as_str()) {
             return None;
         }
         let url_filter = format!("||{}", rest);
@@ -395,13 +578,14 @@ fn parse_abp_line(line: &str, default_types: &[&'static str]) -> Option<ParsedRu
             return None;
         }
         return Some(ParsedRule {
+            action_type,
+            priority,
             url_filter,
             domain_type,
             resource_types: rtypes,
         });
     }
 
-    // Path/URL pattern (require >= 8 chars and at least one alphanumeric to avoid overly broad matches)
     if (pattern_raw.starts_with('/') || pattern_raw.starts_with("http"))
         && pattern_raw.len() >= 8
         && !pattern_raw.contains('"')
@@ -409,6 +593,8 @@ fn parse_abp_line(line: &str, default_types: &[&'static str]) -> Option<ParsedRu
         && pattern_raw.chars().any(|c| c.is_ascii_alphanumeric())
     {
         return Some(ParsedRule {
+            action_type,
+            priority,
             url_filter: pattern_raw.to_string(),
             domain_type,
             resource_types: rtypes,
@@ -434,17 +620,30 @@ fn parse_hosts_line(line: &str, default_types: &[&'static str]) -> Option<Parsed
         return None;
     }
     Some(ParsedRule {
+        action_type: "block",
+        priority: 1,
         url_filter: format!("||{domain}^"),
         domain_type: None,
         resource_types: default_types.to_vec(),
     })
 }
 
-fn parse_list(text: &str, default_types: &[&'static str], out: &mut Vec<ParsedRule>) {
+fn parse_list(
+    text: &str,
+    default_types: &[&'static str],
+    out: &mut Vec<ParsedRule>,
+    cosmetic: &mut CosmeticStore,
+) {
     for raw in text.lines() {
         let line = raw.trim();
-        if line.is_empty() || line.starts_with('!') || line.starts_with('#') || line.starts_with('[')
-        {
+        if line.is_empty() || line.starts_with('!') || line.starts_with('[') {
+            continue;
+        }
+        if line.contains("##") {
+            parse_cosmetic_line(line, cosmetic);
+            continue;
+        }
+        if line.starts_with('#') {
             continue;
         }
         if let Some(r) = parse_abp_line(line, default_types) {
@@ -462,7 +661,7 @@ fn fetch_list(url: &str) -> Result<String, String> {
             "--max-time",
             "25",
             "-A",
-            "KestrelShield-FilterBuilder/2.0",
+            "KestrelShield-FilterBuilder/3.0",
             url,
         ])
         .output()
@@ -499,7 +698,8 @@ fn emit_ruleset(rules: Vec<ParsedRule>, max_rules: usize, path: &Path) -> usize 
 
     for r in rules {
         let dedup_key = format!(
-            "{}|{}|{}",
+            "{}|{}|{}|{}",
+            r.action_type,
             r.url_filter,
             r.domain_type.unwrap_or(""),
             r.resource_types.join(",")
@@ -517,7 +717,9 @@ fn emit_ruleset(rules: Vec<ParsedRule>, max_rules: usize, path: &Path) -> usize 
             None => String::new(),
         };
         json.push_str(&format!(
-            r#"{{"id":{count},"priority":1,"action":{{"type":"block"}},"condition":{{"urlFilter":{},"resourceTypes":[{}]{dt_json}}}}}"#,
+            r#"{{"id":{count},"priority":{},"action":{{"type":"{}"}},"condition":{{"urlFilter":{},"resourceTypes":[{}]{dt_json}}}}}"#,
+            r.priority,
+            r.action_type,
             json_escape(&r.url_filter),
             rtypes_json.join(",")
         ));
@@ -540,6 +742,24 @@ fn emit_tracking_params_ruleset(path: &Path) -> usize {
     1
 }
 
+fn emit_cosmetic_json(store: &CosmeticStore, path: &Path) -> (usize, usize) {
+    let global_items: Vec<String> = store.global.iter().map(|s| json_escape(s)).collect();
+    let mut domain_entries: Vec<String> = Vec::new();
+    let mut domain_sel_count = 0usize;
+    for (dom, sels) in &store.domains {
+        domain_sel_count += sels.len();
+        let escaped: Vec<String> = sels.iter().map(|s| json_escape(s)).collect();
+        domain_entries.push(format!("{}:[{}]", json_escape(dom), escaped.join(",")));
+    }
+    let json = format!(
+        r#"{{"global":[{}],"domains":{{{}}}}}"#,
+        global_items.join(","),
+        domain_entries.join(",")
+    );
+    fs::write(path, json.as_bytes()).expect("failed to write cosmetic.json");
+    (store.global.len(), domain_sel_count)
+}
+
 fn default_rules_dir() -> PathBuf {
     if Path::new("manifest.json").exists() || Path::new("rules").exists() {
         return PathBuf::from("rules");
@@ -560,10 +780,13 @@ fn build_category(
     max_rules: usize,
     offline: bool,
     out_path: &Path,
+    cosmetic: &mut CosmeticStore,
 ) -> usize {
     let mut rules: Vec<ParsedRule> = builtin
         .iter()
         .map(|d| ParsedRule {
+            action_type: "block",
+            priority: 1,
             url_filter: format!("||{d}^"),
             domain_type: None,
             resource_types: default_types.to_vec(),
@@ -576,8 +799,8 @@ fn build_category(
             match fetch_list(url) {
                 Ok(content) => {
                     let before = rules.len();
-                    parse_list(&content, default_types, &mut rules);
-                    eprintln!("  parsed {} rules from {src}", rules.len() - before);
+                    parse_list(&content, default_types, &mut rules, cosmetic);
+                    eprintln!("  parsed {} network rules from {src}", rules.len() - before);
                 }
                 Err(err) => {
                     eprintln!("  warning: failed to fetch {src}: {err}");
@@ -629,16 +852,18 @@ fn main() {
     }
 
     fs::create_dir_all(&rules_dir).expect("failed to create rules directory");
+    let mut cosmetic = CosmeticStore::new();
 
-    // Keep total enabled static rules strictly <= 29,501 (< 30,000 MV3 guaranteed minimum).
+    // Keep total enabled static rules strictly <= 29,801 (< 30,000 MV3 guaranteed minimum).
     let ads = build_category(
         "ads",
         BUILTIN_ADS,
         ADS_URLS,
         DEFAULT_RESOURCE_TYPES,
-        12_000,
+        15_000,
         offline,
         &rules_dir.join("ads.json"),
+        &mut cosmetic,
     );
     let privacy = build_category(
         "privacy",
@@ -648,28 +873,38 @@ fn main() {
         10_000,
         offline,
         &rules_dir.join("privacy.json"),
-    );
-    let malware = build_category(
-        "malware",
-        BUILTIN_MALWARE,
-        MALWARE_URLS,
-        MALWARE_RESOURCE_TYPES,
-        4_000,
-        offline,
-        &rules_dir.join("malware.json"),
+        &mut cosmetic,
     );
     let annoyances = build_category(
         "annoyances",
         BUILTIN_ANNOYANCES,
         ANNOYANCES_URLS,
         DEFAULT_RESOURCE_TYPES,
-        3_500,
+        4_000,
         offline,
         &rules_dir.join("annoyances.json"),
+        &mut cosmetic,
+    );
+    let malware = build_category(
+        "malware",
+        BUILTIN_MALWARE,
+        MALWARE_URLS,
+        MALWARE_RESOURCE_TYPES,
+        800,
+        offline,
+        &rules_dir.join("malware.json"),
+        &mut cosmetic,
     );
     let tracking = emit_tracking_params_ruleset(&rules_dir.join("tracking_params.json"));
+    let (cos_global, cos_domain) =
+        emit_cosmetic_json(&cosmetic, &rules_dir.join("cosmetic.json"));
+
     eprintln!(
-        "Total static rules: {} (ads={ads}, privacy={privacy}, malware={malware}, annoyances={annoyances}, tracking_params={tracking})",
-        ads + privacy + malware + annoyances + tracking
+        "Total static DNR rules: {} (ads={ads}, privacy={privacy}, annoyances={annoyances}, malware={malware}, tracking_params={tracking})",
+        ads + privacy + annoyances + malware + tracking
+    );
+    eprintln!(
+        "Cosmetic selectors: {} total (global={cos_global}, domain-specific={cos_domain})",
+        cos_global + cos_domain
     );
 }

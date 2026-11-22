@@ -3,18 +3,109 @@
 (() => {
   let fpEnabled = true;
   let aggressive = false;
+  let shieldsUp = true;
 
-  // Per-session deterministic tiny jitter (-1, 0, or +1 LSB)
   const noiseSeed = (Math.random() * 255) | 0;
+  const host = (location.hostname || "").toLowerCase();
+  const isYouTube = host === "youtube.com" || host.endsWith(".youtube.com");
 
   window.addEventListener("kestrel-shield-config", (e) => {
     if (e && e.detail) {
       fpEnabled = Boolean(e.detail.fp);
       aggressive = Boolean(e.detail.aggressive);
+      shieldsUp = e.detail.shieldsUp !== false;
     }
   });
 
-  // 1. Canvas fingerprint protection (1-LSB jitter on 1 pixel when read)
+  // 1. Anti-adblock bait property traps (uBlock/Brave scriptlet defense)
+  try {
+    const baitProps = {
+      canRunAds: true,
+      isAdBlockActive: false,
+      adblockEnabled: false,
+      google_ad_status: 1
+    };
+    for (const [prop, val] of Object.entries(baitProps)) {
+      if (!(prop in window)) {
+        Object.defineProperty(window, prop, {
+          get: () => (shieldsUp ? val : undefined),
+          set: () => {},
+          configurable: true
+        });
+      }
+    }
+  } catch {
+    // Ignore restricted window properties
+  }
+
+  // 2. YouTube ad-JSON pruning (strips adPlacements, playerAds, adSlots)
+  const YT_AD_KEYS = [
+    "adPlacements",
+    "playerAds",
+    "adSlots",
+    "adBreakHeartbeatParams"
+  ];
+
+  function pruneYouTubeAds(obj) {
+    if (!obj || typeof obj !== "object") return obj;
+    for (const k of YT_AD_KEYS) {
+      if (k in obj) delete obj[k];
+    }
+    if (obj.playerResponse && typeof obj.playerResponse === "object") {
+      for (const k of YT_AD_KEYS) {
+        if (k in obj.playerResponse) delete obj.playerResponse[k];
+      }
+    }
+    return obj;
+  }
+
+  if (isYouTube) {
+    const origJsonParse = JSON.parse;
+    JSON.parse = function (...args) {
+      const res = origJsonParse.apply(this, args);
+      return shieldsUp ? pruneYouTubeAds(res) : res;
+    };
+
+    const origRespJson = Response.prototype.json;
+    Response.prototype.json = async function (...args) {
+      const res = await origRespJson.apply(this, args);
+      return shieldsUp ? pruneYouTubeAds(res) : res;
+    };
+
+    let ytPlayerResp;
+    try {
+      Object.defineProperty(window, "ytInitialPlayerResponse", {
+        configurable: true,
+        get: () => ytPlayerResp,
+        set: (val) => {
+          ytPlayerResp = shieldsUp ? pruneYouTubeAds(val) : val;
+        }
+      });
+    } catch {
+      // Ignore if already locked
+    }
+
+    // Fast skip fallback if a player ad state ever triggers
+    document.addEventListener(
+      "timeupdate",
+      () => {
+        if (!shieldsUp) return;
+        const player = document.querySelector(".html5-video-player.ad-showing");
+        if (!player) return;
+        const skipBtn = player.querySelector(
+          ".ytp-ad-skip-button, .ytp-ad-skip-button-modern, .ytp-skip-ad-button"
+        );
+        if (skipBtn) skipBtn.click();
+        const video = player.querySelector("video");
+        if (video && Number.isFinite(video.duration) && video.duration > 0) {
+          video.currentTime = video.duration;
+        }
+      },
+      true
+    );
+  }
+
+  // 3. Canvas fingerprint protection (1-LSB jitter on 1 pixel when read)
   const origGetImageData = CanvasRenderingContext2D.prototype.getImageData;
   CanvasRenderingContext2D.prototype.getImageData = function (...args) {
     const img = origGetImageData.apply(this, args);
@@ -41,7 +132,7 @@
     return origToDataURL.apply(this, args);
   };
 
-  // 2. AudioContext fingerprint protection (sub-audible 1e-7 noise)
+  // 4. AudioContext fingerprint protection (sub-audible 1e-7 noise)
   const origGetChannelData = AudioBuffer.prototype.getChannelData;
   AudioBuffer.prototype.getChannelData = function (channel) {
     const data = origGetChannelData.call(this, channel);
@@ -51,9 +142,9 @@
     return data;
   };
 
-  // 3. Tracker sendBeacon & <a ping> blocking
+  // 5. Tracker sendBeacon & <a ping> blocking
   const TRACKER_BEACON_RE =
-    /(analytics|telemetry|collect|beacon|pixel|track|metrics|logging|sentry|segment|mixpanel|amplitude|hotjar|doubleclick)/i;
+    /(analytics|telemetry|collect|beacon|pixel|track|metrics|logging|sentry|segment|mixpanel|amplitude|hotjar|doubleclick|youtube\.com\/api\/stats\/ads)/i;
 
   if (navigator.sendBeacon) {
     const origBeacon = navigator.sendBeacon.bind(navigator);

@@ -1038,6 +1038,7 @@ fn build_flags(cfg: &Config, profile_dir: &Path, cache_dir: &Path) -> Vec<String
         );
         enable_features.extend(["HighEfficiencyModeAvailable", "MemorySaverModeAvailable"]);
         disable_features.extend([
+            "NtpFooter",
             "OptimizationHints",
             "OptimizationTargetPrediction",
             "PreloadMediaEngagementData",
@@ -1834,6 +1835,7 @@ fn main() {
     ensure_profile_preferences(&profile_dir, &cfg, false, Some(&cmd));
 
     let err = Command::new(&cmd[0])
+        .env("CHROME_DESKTOP", "kestrel.desktop")
         .args(&cmd[1..])
         .args(&flags)
         .args(&pass_args)

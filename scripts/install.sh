@@ -55,6 +55,7 @@ cp -a \
   "${REPO_ROOT}/adblocker/manifest.json" \
   "${REPO_ROOT}/adblocker/background.js" \
   "${REPO_ROOT}/adblocker/content.js" \
+  "${REPO_ROOT}/adblocker/anti_fingerprint.js" \
   "${REPO_ROOT}/adblocker/popup.html" \
   "${REPO_ROOT}/adblocker/popup.css" \
   "${REPO_ROOT}/adblocker/popup.js" \

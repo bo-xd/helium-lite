@@ -1,0 +1,1466 @@
+--- a/chrome/app/theme/chromium/BRANDING
++++ b/chrome/app/theme/chromium/BRANDING
+@@ -1,10 +1,10 @@
+-COMPANY_FULLNAME=The Chromium Authors
+-COMPANY_SHORTNAME=The Chromium Authors
+-PRODUCT_FULLNAME=Chromium
+-PRODUCT_SHORTNAME=Chromium
+-PRODUCT_INSTALLER_FULLNAME=Chromium Installer
+-PRODUCT_INSTALLER_SHORTNAME=Chromium Installer
+-COPYRIGHT=Copyright @LASTCHANGE_YEAR@ The Chromium Authors. All rights reserved.
+-MAC_BUNDLE_ID=org.chromium.Chromium
+-MAC_CREATOR_CODE=Cr24
++COMPANY_FULLNAME=The Kestrel Authors
++COMPANY_SHORTNAME=The Kestrel Authors
++PRODUCT_FULLNAME=Kestrel
++PRODUCT_SHORTNAME=Kestrel
++PRODUCT_INSTALLER_FULLNAME=Kestrel Installer
++PRODUCT_INSTALLER_SHORTNAME=Kestrel Installer
++COPYRIGHT=Copyright @LASTCHANGE_YEAR@ The Kestrel Authors. All rights reserved.
++MAC_BUNDLE_ID=org.kestrel.Kestrel
++MAC_CREATOR_CODE=Ks24
+ MAC_TEAM_ID=
+--- a/content/common/url_schemes.cc
++++ b/content/common/url_schemes.cc
+@@ -61,6 +61,7 @@
+ 
+   url::AddStandardScheme(kChromeDevToolsScheme, url::SCHEME_WITH_HOST);
+   url::AddStandardScheme(kChromeUIScheme, url::SCHEME_WITH_HOST);
++  url::AddStandardScheme("kestrel", url::SCHEME_WITH_HOST);
+   url::AddStandardScheme(kChromeUIUntrustedScheme, url::SCHEME_WITH_HOST);
+   url::AddStandardScheme(kChromeErrorScheme, url::SCHEME_WITH_HOST);
+   for (auto& scheme : schemes.standard_schemes)
+@@ -71,6 +72,7 @@
+ 
+   schemes.secure_schemes.push_back(kChromeDevToolsScheme);
+   schemes.secure_schemes.push_back(kChromeUIScheme);
++  schemes.secure_schemes.push_back("kestrel");
+   schemes.secure_schemes.push_back(kChromeUIUntrustedScheme);
+   schemes.secure_schemes.push_back(kChromeErrorScheme);
+   for (auto& scheme : schemes.secure_schemes)
+--- a/chrome/browser/browser_about_handler.cc
++++ b/chrome/browser/browser_about_handler.cc
+@@ -49,6 +49,12 @@
+   //    renderer-initiated navigations)
+   DCHECK(url->IsAboutBlank() || url->IsAboutSrcdoc() ||
+          !url->SchemeIs(url::kAboutScheme));
++
++  if (url->SchemeIs("kestrel")) {
++    GURL::Replacements replacements;
++    replacements.SetSchemeStr(content::kChromeUIScheme);
++    *url = url->ReplaceComponents(replacements);
++  }
+ 
+   // Only handle chrome: URLs.
+   if (!url->SchemeIs(content::kChromeUIScheme)) {
+--- a/content/browser/renderer_host/navigation_controller_impl.cc
++++ b/content/browser/renderer_host/navigation_controller_impl.cc
+@@ -459,6 +459,11 @@
+   *url_to_load = *virtual_url = original_url;
+   BrowserURLHandlerImpl::GetInstance()->RewriteURLIfNecessary(
+       url_to_load, browser_context, reverse_on_redirect);
++  if (virtual_url->SchemeIs(kChromeUIScheme)) {
++    GURL::Replacements replacements;
++    replacements.SetSchemeStr("kestrel");
++    *virtual_url = virtual_url->ReplaceComponents(replacements);
++  }
+ }
+ 
+ #if DCHECK_IS_ON()
+@@ -1726,6 +1731,10 @@
+   if (BrowserURLHandlerImpl::GetInstance()->ReverseURLRewrite(
+           &new_virtual_url, entry->GetVirtualURL(), browser_context_)) {
+     entry->SetVirtualURL(new_virtual_url);
++  } else if (new_virtual_url.SchemeIs(kChromeUIScheme)) {
++    GURL::Replacements replacements;
++    replacements.SetSchemeStr("kestrel");
++    entry->SetVirtualURL(new_virtual_url.ReplaceComponents(replacements));
+   }
+ }
+ 
+@@ -2596,6 +2605,12 @@
+     BrowserURLHandlerImpl::GetInstance()->RewriteURLIfNecessary(
+         &url, browser_context_, &needs_update);
+     new_entry->set_update_virtual_url_with_url(needs_update);
++    if (new_entry->GetVirtualURL().SchemeIs(kChromeUIScheme)) {
++      GURL vurl = new_entry->GetVirtualURL();
++      GURL::Replacements replacements;
++      replacements.SetSchemeStr("kestrel");
++      new_entry->SetVirtualURL(vurl.ReplaceComponents(replacements));
++    }
+ 
+     new_entry->GetSSL() =
+         SSLStatus(request->GetSSLInfo().value_or(net::SSLInfo()));
+--- a/chrome/browser/resources/settings/page_visibility.ts
++++ b/chrome/browser/resources/settings/page_visibility.ts
+@@ -44,7 +44,7 @@
+ 
+ function createPageVisibility(): PageVisibility|undefined {
+   if (!loadTimeData.getBoolean('isGuest')) {
+-    return undefined;
++    return {people: false, safetyHub: false, ai: false};
+   }
+ 
+   // <if expr="not is_chromeos">
+--- a/chrome/browser/ui/views/new_tab_footer/footer_controller.cc
++++ b/chrome/browser/ui/views/new_tab_footer/footer_controller.cc
+@@ -214,6 +214,7 @@
+ 
+ bool NewTabFooterController::ContentsViewFooterCotroller::
+     ShouldShowExtensionFooter(const GURL& url) {
++  return false;
+   if (ShouldSkipForErrorPage()) {
+     return false;
+   }
+--- a/chrome/app/settings_chromium_strings.grdp
++++ b/chrome/app/settings_chromium_strings.grdp
+@@ -4,7 +4,7 @@
+   <!-- Shared across multiple page -->
+   <if expr="not is_chromeos">
+     <message name="IDS_RELAUNCH_CONFIRMATION_DIALOG_TITLE" desc="The title of the modal dialog that we show when users click on relaunch and they have open Incognito windows. The dialog serves to warn the users about losing their Incognito windows if they proceed with the relaunch.">
+-      Relaunch Chromium?
++      Relaunch Kestrel?
+     </message>
+   </if>
+   <!-- About Page -->
+@@ -19,25 +19,25 @@
+     </then>
+     <else>
+       <message name="IDS_SETTINGS_ABOUT_PROGRAM" desc="Menu title for the About Chromium page.">
+-        About Chromium
++        About Kestrel
+       </message>
+       <message name="IDS_SETTINGS_GET_HELP_USING_CHROME" desc="Text of the button which takes the user to the Chrome help page.">
+-        Get help with Chromium
++        Get help with Kestrel
+       </message>
+     </else>
+   </if>
+   <if expr="not is_chromeos">
+     <message name="IDS_SETTINGS_UPGRADE_UPDATING" desc="Status label: Updating Chromium">
+-      Updating Chromium
++      Updating Kestrel
+     </message>
+     <message name="IDS_SETTINGS_UPGRADE_UPDATING_PERCENT" desc="Status label: Updating Chromium (90%)">
+-      Updating Chromium (<ph name="PROGRESS_PERCENT">$1<ex>90%</ex></ph>)
++      Updating Kestrel (<ph name="PROGRESS_PERCENT">$1<ex>90%</ex></ph>)
+     </message>
+     <message name="IDS_SETTINGS_UPGRADE_SUCCESSFUL_RELAUNCH" desc="Status label: Successfully updated Chromium">
+-      Nearly up to date! Relaunch Chromium to finish updating.
++      Nearly up to date! Relaunch Kestrel to finish updating.
+     </message>
+     <message name="IDS_SETTINGS_UPGRADE_UP_TO_DATE" desc="Status label: Already up to date (Chromium)">
+-      Chromium is up to date
++      Kestrel is up to date
+     </message>
+   </if>
+   <if expr="is_chromeos">
+@@ -51,45 +51,45 @@
+ 
+   <!-- Autofill Page -->
+   <message name="IDS_SETTINGS_SIGNED_OUT_USER_LABEL" desc="Label which is shown at the top of the compromised password section if user is signed out.">
+-    To check if your passwords are safe from data breaches and other security issues, <ph name="BEGIN_LINK">&lt;a target='_blank' href='$1'&gt;</ph>sign in to Chromium<ph name="END_LINK">&lt;/a&gt;</ph>.
++    To check if your passwords are safe from data breaches and other security issues, <ph name="BEGIN_LINK">&lt;a target='_blank' href='$1'&gt;</ph>sign in to Kestrel<ph name="END_LINK">&lt;/a&gt;</ph>.
+   </message>
+ 
+   <!-- Autofill AI Page-->
+   <message name="IDS_SETTINGS_AUTOFILL_AI_WHEN_ON_USE_TO_FILL"  desc="Bullet 2 of 2 that appears beneath the “When on” title. “Later”: this is a two-step feature. 1) data is saved, 2) it becomes valuable to the user later when they want to fill in a form with similar data. “Chromium can ask”: the user has a choice, every time, whether their data is saved and also whether they want to autofill their saved info into forms.">
+-    Later, Chromium can ask if you want to use saved info to autofill forms for you
++    Later, Kestrel can ask if you want to use saved info to autofill forms for you
+   </message>
+   <!-- Default Browser Page -->
+   <if expr="not is_chromeos">
+     <message name="IDS_SETTINGS_DEFAULT_BROWSER_DEFAULT" desc="The text displayed when Chrome is the default browser">
+-      Chromium is your default browser
++      Kestrel is your default browser
+     </message>
+     <message name="IDS_SETTINGS_DEFAULT_BROWSER_DEFAULT_THANK_YOU" desc="The text displayed when Chromium is the default browser">
+-      Thanks for choosing Chromium as your default browser!
++      Thanks for choosing Kestrel as your default browser!
+     </message>
+     <message name="IDS_SETTINGS_DEFAULT_BROWSER_MAKE_DEFAULT" desc="Default browser checkbox label">
+-      Make Chromium the default browser
++      Make Kestrel the default browser
+     </message>
+     <message name="IDS_SETTINGS_DEFAULT_BROWSER_MAKE_DEFAULT_USER_VALUE" desc="The text displayed when Chromium is not the default browser. This string describes the effect (user benefit) of setting a browser as the default.">
+-      You can use Chromium anytime you click links in messages, documents, and other apps
++      You can use Kestrel anytime you click links in messages, documents, and other apps
+     </message>
+     <message name="IDS_SETTINGS_DEFAULT_BROWSER_MAKE_DEFAULT_AND_PIN" desc="The text of the button to make Chromium the default browser and pin it to the taskbar.">
+-      Make Chromium the default browser and pin to the taskbar
++      Make Kestrel the default browser and pin to the taskbar
+     </message>
+     <message name="IDS_SETTINGS_DEFAULT_BROWSER_MAKE_DEFAULT_AND_PIN_USER_VALUE" desc="The text of the button to make Chromium the default browser and pin it to the taskbar.">
+-      You can use Chromium anytime you click links in messages, documents, and other apps. It will also be pinned to your taskbar.
++      You can use Kestrel anytime you click links in messages, documents, and other apps. It will also be pinned to your taskbar.
+     </message>
+     <message name="IDS_SETTINGS_DEFAULT_BROWSER_ERROR" desc="The text displayed when Chrome cannot determine or set the default browser">
+-      Chromium cannot determine or set the default browser
++      Kestrel cannot determine or set the default browser
+     </message>
+     <if expr="_is_chrome_for_testing_branded">
+       <then>
+         <message name="IDS_SETTINGS_DEFAULT_BROWSER_SECONDARY" desc="The text displayed when Chrome for Testing is installed in side-by-side mode, which does not support setting as the default browser.">
+-          Google Chrome for Testing cannot be made your default browser.
++          Kestrel for Testing cannot be made your default browser.
+         </message>
+       </then>
+       <else>
+         <message name="IDS_SETTINGS_DEFAULT_BROWSER_SECONDARY" desc="The text displayed when Chromium is installed in side-by-side mode, which does not support setting as the default browser.">
+-          This is a secondary installation of Chromium, and cannot be made your default browser.
++          This is a secondary installation of Kestrel, and cannot be made your default browser.
+         </message>
+       </else>
+     </if>
+@@ -97,346 +97,346 @@
+ 
+   <!-- Preloading Page-->
+   <message name="IDS_SETTINGS_PRELOAD_PAGES_STANDARD_PRELOADING_WHEN_ON_BULLET_TWO" desc="Bullet point in the standard preloading and when on column. Informs the user about what the standard preloading setting does.">
+-    Chromium preloads pages you're likely to visit, so that they load more quickly when you visit them
++    Kestrel preloads pages you're likely to visit, so that they load more quickly when you visit them
+   </message>
+   <message name="IDS_SETTINGS_PRELOAD_PAGES_EXTENDED_PRELOADING_WHEN_ON_BULLET_TWO" desc="Bullet point in the extended preloading and when on column. Informs the user about what the extended preloading setting does.">
+-    Chromium preloads even more pages that you're likely to visit, so that they load more quickly when you visit them
++    Kestrel preloads even more pages that you're likely to visit, so that they load more quickly when you visit them
+   </message>
+   <message name="IDS_SETTINGS_PRELOAD_PAGES_EXTENDED_PRELOADING_THINGS_TO_CONSIDER_BULLET_TWO" desc="Bullet point in the extended preloading and things to consider column. Informs the user about what the extended preloading setting does.">
+-    When a site asks to privately preload links on their page, Chromium uses Google servers. This hides your identity from the preloaded site, but Google learns what sites get preloaded.
++    When a site asks to privately preload links on their page, Kestrel uses Google servers. This hides your identity from the preloaded site, but Google learns what sites get preloaded.
+   </message>
+   <message name="IDS_SETTINGS_PRELOAD_PAGES_THINGS_TO_CONSIDER_BULLET_ONE" desc="Bullet point in the things to consider column. Informs the user about what the preloading setting does.">
+-    If you allow cookies, Chromium may use them when preloading
++    If you allow cookies, Kestrel may use them when preloading
+   </message>
+ 
+   <!-- Privacy Page -->
+   <message name="IDS_SETTINGS_SPELLING_PREF_DESC" desc="Description of using a web serviced to help resolve spelling errors. It is important to convey that what the user types will be sent to Google.">
+-    To fix spelling errors, Chromium sends the text you type in text fields to Google
++    To fix spelling errors, Kestrel sends the text you type in text fields to Google
+   </message>
+   <message name="IDS_SETTINGS_RESTART_TO_APPLY_CHANGES" desc="Description in the snackbar to restart Chrome and apply changes.">
+-    To apply your changes, relaunch Chromium
++    To apply your changes, relaunch Kestrel
+   </message>
+ 
+   <if expr="not is_chromeos">
+     <message name="IDS_SETTINGS_SIGNIN_ALLOWED" desc="The title of the preference to allow to sign-in to Chrome">
+-    Allow Chromium sign-in
++    Allow Kestrel sign-in
+     </message>
+     <message name="IDS_SETTINGS_SIGNIN_ALLOWED_DESC" desc="The description of the preference to allow to sign-in to Chrome">
+-    By turning this off, you can sign in to Google sites like Gmail without signing in to Chromium
++    By turning this off, you can sign in to Google sites like Gmail without signing in to Kestrel
+     </message>
+     <message name="IDS_SETTINGS_SIGNIN_ALLOWED_DESC_2" desc="The description of the preference to allow to sign-in to Chrome">
+-    Shows prompts to sign in to Chromium
++    Shows prompts to sign in to Kestrel
+     </message>
+   </if>
+ 
+   <!-- Site Settings -->
+   <message name="IDS_SETTINGS_SITE_SETTINGS_PDFS_BLOCKED" desc="Label for the disabled option of the pdfs content setting.">
+-    Open PDFs in Chromium
++    Open PDFs in Kestrel
+   </message>
+   <message name="IDS_SETTINGS_SITE_SITE_DETAILS_CAMERA_BLOCKED_BY_OS" desc="The description for the camera permission with a link to system settings.">
+-      To use your camera, give Chromium access in <ph name="BEGIN_LINK">&lt;a href="#" id="openSystemSettingsLink" &gt;</ph>system settings<ph name="END_LINK">&lt;/a&gt;<ex>&lt;/a&gt;</ex></ph>
++      To use your camera, give Kestrel access in <ph name="BEGIN_LINK">&lt;a href="#" id="openSystemSettingsLink" &gt;</ph>system settings<ph name="END_LINK">&lt;/a&gt;<ex>&lt;/a&gt;</ex></ph>
+   </message>
+   <message name="IDS_SETTINGS_SITE_SITE_DETAILS_MICROPHONE_BLOCKED_BY_OS" desc="The description for the microphone permission with a link to system settings.">
+-      To use your microphone, give Chromium access in <ph name="BEGIN_LINK">&lt;a href="#" id="openSystemSettingsLink" &gt;</ph>system settings<ph name="END_LINK">&lt;/a&gt;<ex>&lt;/a&gt;</ex></ph>
++      To use your microphone, give Kestrel access in <ph name="BEGIN_LINK">&lt;a href="#" id="openSystemSettingsLink" &gt;</ph>system settings<ph name="END_LINK">&lt;/a&gt;<ex>&lt;/a&gt;</ex></ph>
+   </message>
+   <message name="IDS_SETTINGS_SITE_SITE_DETAILS_LOCATION_BLOCKED_BY_OS" desc="The description for the location permission with a link to system settings.">
+-      To use your location, give Chromium access in <ph name="BEGIN_LINK">&lt;a href="#" id="openSystemSettingsLink" &gt;</ph>system settings<ph name="END_LINK">&lt;/a&gt;<ex>&lt;/a&gt;</ex></ph>
++      To use your location, give Kestrel access in <ph name="BEGIN_LINK">&lt;a href="#" id="openSystemSettingsLink" &gt;</ph>system settings<ph name="END_LINK">&lt;/a&gt;<ex>&lt;/a&gt;</ex></ph>
+   </message>
+   <message name="IDS_SETTINGS_SITE_SETTINGS_CAMERA_BLOCKED_BY_OS" desc="Warning for camera content setting when the camera is disabled on OS level." translateable="false">
+-    To use your camera on these sites, give Chromium access in <ph name="BEGIN_LINK">&lt;a href="#" id="openSystemSettingsLink" &gt;</ph>system settings<ph name="END_LINK">&lt;/a&gt;<ex>&lt;/a&gt;</ex></ph>
++    To use your camera on these sites, give Kestrel access in <ph name="BEGIN_LINK">&lt;a href="#" id="openSystemSettingsLink" &gt;</ph>system settings<ph name="END_LINK">&lt;/a&gt;<ex>&lt;/a&gt;</ex></ph>
+   </message>
+   <message name="IDS_SETTINGS_SITE_SETTINGS_LOCATION_BLOCKED_BY_OS" desc="Warning for location content setting when the camera is disabled on OS level." translateable="false">
+-    To use your location on these sites, give Chromium access in <ph name="BEGIN_LINK">&lt;a href="#" id="openSystemSettingsLink" &gt;</ph>system settings<ph name="END_LINK">&lt;/a&gt;<ex>&lt;/a&gt;</ex></ph>
++    To use your location on these sites, give Kestrel access in <ph name="BEGIN_LINK">&lt;a href="#" id="openSystemSettingsLink" &gt;</ph>system settings<ph name="END_LINK">&lt;/a&gt;<ex>&lt;/a&gt;</ex></ph>
+   </message>
+   <message name="IDS_SETTINGS_SITE_SETTINGS_MIC_BLOCKED_BY_OS" desc="Warning for microphone content setting when the camera is disabled on OS level." translateable="false">
+-    To use your microphone on these sites, give Chromium access in <ph name="BEGIN_LINK">&lt;a href="#" id="openSystemSettingsLink" &gt;</ph>system settings<ph name="END_LINK">&lt;/a&gt;<ex>&lt;/a&gt;</ex></ph>
++    To use your microphone on these sites, give Kestrel access in <ph name="BEGIN_LINK">&lt;a href="#" id="openSystemSettingsLink" &gt;</ph>system settings<ph name="END_LINK">&lt;/a&gt;<ex>&lt;/a&gt;</ex></ph>
+   </message>
+ 
+     <!-- Site Settings - Site Data Page-->
+   <message name="IDS_SETTINGS_SITE_DATA_PAGE_CLEAR_ON_EXIT_WITH_EXCEPTION_RADIO_SUBLABEL" desc="A description of the benefit/cost of choosing 'Sites can save content on your device. In short, a site will remember your preferences, shopping cart content, etc. during this browser session. But once you close all open windows, and then visit the site again, it's as if you're coming to the site for the first time.">
+-    Sites will probably work as expected. You'll be signed out of most sites when you close all Chromium windows, except your Google Account if you're signed in to Chromium.
++    Sites will probably work as expected. You'll be signed out of most sites when you close all Kestrel windows, except your Google Account if you're signed in to Kestrel.
+   </message>
+   <message name="IDS_SETTINGS_SITE_DATA_PAGE_DELETE_ON_EXIT_EXCEPTIONS_SUB_HEADING" desc="2 of 3. A label within 'Customized behaviors' that allows for exceptions to the 'On-device site data' setting. This label and the list of sites that can appear beneath it is only relevant if the user has chosen to allow 'on-device site data' as the default value above.">
+-    Always delete site data from your device when you close Chromium
++    Always delete site data from your device when you close Kestrel
+   </message>
+ 
+   <!-- Privacy Guide -->
+   <message name="IDS_SETTINGS_PRIVACY_GUIDE_PROMO_BODY" desc="Body text of a card in the settings page that explains what the 'Privacy Guide' feature is.">
+-    Review key privacy and security controls in Chromium
++    Review key privacy and security controls in Kestrel
+   </message>
+   <message name="IDS_SETTINGS_PRIVACY_GUIDE_SAFE_BROWSING_CARD_STANDARD_PROTECTION_FEATURE_DESCRIPTION2" desc="A part of the feature description of the standard protection section of the safe browsing card in the 'Privacy Guide'.">
+-    Checks URLs with a list of unsafe sites stored in Chromium
++    Checks URLs with a list of unsafe sites stored in Kestrel
+   </message>
+   <message name="IDS_SETTINGS_PRIVACY_GUIDE_SAFE_BROWSING_CARD_STANDARD_PROTECTION_PRIVACY_DESCRIPTION1" desc="A part of the privacy description of the standard protection section of the safe browsing card in the 'Privacy Guide'.">
+-    If a site tries to steal your password, or when you download a harmful file, Chromium may also send URLs, including bits of page content, to Safe Browsing
++    If a site tries to steal your password, or when you download a harmful file, Kestrel may also send URLs, including bits of page content, to Safe Browsing
+   </message>
+   <message name="IDS_SETTINGS_PRIVACY_GUIDE_COMPLETION_CARD_WAA_SUB_LABEL" desc="Text of the Web and App Activity sublabel in the completion card of the 'Privacy Guide'.">
+-    Choose whether to include Chromium history for more personalized experiences in Google services
++    Choose whether to include Kestrel history for more personalized experiences in Google services
+   </message>
+   <message name="IDS_SETTINGS_PRIVACY_GUIDE_MSBB_FEATURE_DESCRIPTION3" desc="A part of the feature description of 'make searches and browsing better' in the 'Privacy Guide'.">
+-    If you also save your bookmarks in your Google Account, you can track product prices in Chromium and get notified when the price drops
++    If you also save your bookmarks in your Google Account, you can track product prices in Kestrel and get notified when the price drops
+   </message>
+   <message name="IDS_SETTINGS_PRIVACY_GUIDE_MSBB_PRIVACY_DESCRIPTION2" desc="A part of the privacy description of 'make searches and browsing better' in the 'Privacy Guide'.">
+-    If you also share Chromium usage reports, those reports include the URLs you visit
++    If you also share Kestrel usage reports, those reports include the URLs you visit
+   </message>
+ 
+ 
+   <!-- Safety check -->
+   <message name="IDS_SETTINGS_SAFETY_CHECK_UNUSED_SITE_PERMISSIONS_SETTING_SUBLABEL" desc="By default Chrome auto-revokes (disables) permissions (e.g. Camera, Location, etc.) for websites that were not visited for a while. This sublabel is for the toggle that allows users to switch off/on this functionality.">
+-    To protect your data, let Chromium remove permissions from sites you haven't visited recently. Doesn't stop notifications.
++    To protect your data, let Kestrel remove permissions from sites you haven't visited recently. Doesn't stop notifications.
+   </message>
+     <message name="IDS_SETTINGS_SAFETY_CHECK_UNUSED_SITE_PERMISSIONS_AND_NOTIFICATIONS_SETTING_SUBLABEL" desc="By default Chrome auto-revokes (disables) permissions (e.g. Camera, Location, etc.) for websites that were not visited for a while. This sublabel is for the toggle that allows users to switch off/on this functionality.">
+-    To protect your data, let Chromium remove permissions from sites you haven't visited recently.
++    To protect your data, let Kestrel remove permissions from sites you haven't visited recently.
+   </message>
+ 
+   <!-- Safe Browsing -->
+   <message name="IDS_SETTINGS_SAFEBROWSING_ENHANCED_BULLET_TWO" desc="Bullet point under the safe browsing enhanced protection mode">
+-    Keeps you safe on Chromium and may be used to improve your security in other Google apps when you are signed in
++    Keeps you safe on Kestrel and may be used to improve your security in other Google apps when you are signed in
+   </message>
+   <message name="IDS_SETTINGS_SAFEBROWSING_STANDARD_BULLET_TWO" desc="Bullet point under the safe browsing standard protection mode">
+-    Checks URLs with a list of unsafe sites stored in Chromium. If a site tries to steal your password, or when you download a harmful file, Chromium may also send URLs, including bits of page content, to Safe Browsing.
++    Checks URLs with a list of unsafe sites stored in Kestrel. If a site tries to steal your password, or when you download a harmful file, Kestrel may also send URLs, including bits of page content, to Safe Browsing.
+   </message>
+   <message name="IDS_SETTINGS_SAFEBROWSING_ENHANCED_WHEN_ON_BULLET_ONE" desc="Bullet point under the Safe Browsing enhanced protection mode section titled 'When on'">
+-    Warns you about dangerous sites, even ones Google didn't know about before, by analyzing more data from sites than standard protection. You can choose to skip Chromium warnings.
++    Warns you about dangerous sites, even ones Google didn't know about before, by analyzing more data from sites than standard protection. You can choose to skip Kestrel warnings.
+   </message>
+   <message name="IDS_SETTINGS_SAFEBROWSING_ENHANCED_LEARN_MORE_LABEL" desc="The text for a link to a help center article that gives more information about Safe Browsing.">
+-    Learn more about <ph name="BEGIN_LINK">&lt;a href="#" id="enhancedProtectionLearnMoreLink"&gt;</ph>how Chromium keeps your data private<ph name="END_LINK">&lt;/a&gt;<ex>&lt;/a&gt;</ex></ph>
++    Learn more about <ph name="BEGIN_LINK">&lt;a href="#" id="enhancedProtectionLearnMoreLink"&gt;</ph>how Kestrel keeps your data private<ph name="END_LINK">&lt;/a&gt;<ex>&lt;/a&gt;</ex></ph>
+   </message>
+   <message name="IDS_SETTINGS_SECURE_DNS_DESCRIPTION" desc="Secondary, continued explanation of secure DNS in Privacy options">
+-    Make it harder for people with access to your internet traffic to see which sites you visit. Chromium uses a secure connection to look up a site's IP address in the DNS (Domain Name System).
++    Make it harder for people with access to your internet traffic to see which sites you visit. Kestrel uses a secure connection to look up a site's IP address in the DNS (Domain Name System).
+   </message>
+ 
+   <!-- People Page -->
+   <message name="IDS_SETTINGS_SYNC_DISCONNECT_DELETE_PROFILE_WARNING_WITH_COUNTS_SINGULAR" desc="Warning message displayed in the Sign out of Chrome dialog that indicates profile browsing data will be removed from the device.">
+-    This will delete 1 item from this device. To retrieve your data later, sign in to Chromium as <ph name="USER_EMAIL">$1<ex>foo@example.com</ex></ph>.
++    This will delete 1 item from this device. To retrieve your data later, sign in to Kestrel as <ph name="USER_EMAIL">$1<ex>foo@example.com</ex></ph>.
+   </message>
+   <message name="IDS_SETTINGS_SYNC_DISCONNECT_DELETE_PROFILE_WARNING_WITH_COUNTS_PLURAL" desc="Warning message displayed in the Sign out of Chrome dialog that indicates profile browsing data will be removed from the device.">
+-    This will delete <ph name="ITEMS_COUNT">$1<ex>66</ex></ph> items from this device. To retrieve your data later, sign in to Chromium as <ph name="USER_EMAIL">$2<ex>foo@example.com</ex></ph>.
++    This will delete <ph name="ITEMS_COUNT">$1<ex>66</ex></ph> items from this device. To retrieve your data later, sign in to Kestrel as <ph name="USER_EMAIL">$2<ex>foo@example.com</ex></ph>.
+   </message>
+   <message name="IDS_SETTINGS_SYNC_DISCONNECT_DELETE_PROFILE_WARNING_WITHOUT_COUNTS" desc="Warning message displayed in the Sign out of Chrome dialog that indicates profile browsing data will be removed from the device.">
+-    This will delete your browsing data from this device. To retrieve your data later, sign in to Chromium as <ph name="USER_EMAIL">$1<ex>foo@example.com</ex></ph>.
++    This will delete your browsing data from this device. To retrieve your data later, sign in to Kestrel as <ph name="USER_EMAIL">$1<ex>foo@example.com</ex></ph>.
+   </message>
+ <if expr="not is_chromeos">
+   <message name="IDS_SETTINGS_CUSTOMIZE_YOUR_CHROME_PROFILE" desc="Label of the link that takes you to the page to customize your chrome profile.">
+-    Customize your Chromium profile
++    Customize your Kestrel profile
+   </message>
+   <message name="IDS_SETTING_NAME_YOUR_PROFILE" desc="Title of the edit local profile name section on the manage profile page.">
+-    Name your Chromium profile
++    Name your Kestrel profile
+   </message>
+ </if>
+   <message name="IDS_SETTINGS_PEOPLE_SIGN_IN_PROMPT_SECONDARY_WITH_ACCOUNT" desc="The secondary text displayed to prompt users to enable sync for an account that is alredy present in Chromium.">
+-    Sync and personalize Chromium across your devices
++    Sync and personalize Kestrel across your devices
+   </message>
+   <message name="IDS_SETTINGS_PEOPLE_EXPLICIT_SIGN_IN_PROMPT_SECONDARY_WITH_NO_ACCOUNT" desc="The secondary text displayed to prompt users to enable sync for an account that is already present in Chromium.">
+-    To get your passwords and more on all your devices, sign in to Chromium
++    To get your passwords and more on all your devices, sign in to Kestrel
+   </message>
+   <message name="IDS_SETTINGS_PEOPLE_EXPLICIT_SIGN_IN_PROMPT_SECONDARY_WITH_NO_ACCOUNT_WITH_BOOKMARKS" desc="The secondary text displayed to prompt users to enable sync for an account that is already present in Chromium.">
+-    To get your passwords, bookmarks, and more on all your devices, sign in to Chromium
++    To get your passwords, bookmarks, and more on all your devices, sign in to Kestrel
+   </message>
+   <message name="IDS_SETTINGS_PEOPLE_ACCOUNT_AWARE_SIGNIN_ACCOUNT_ROW_TITLE" desc="The title of the avatar row shown to users who are signed in only to the web">
+-    Your Chromium
++    Your Kestrel
+   </message>
+ <if expr="is_chromeos">
+   <message name="IDS_SETTINGS_ACCOUNT_MANAGER_DESCRIPTION_V2" desc="Description of the Account Manager Settings page. Shown just below the title of the page.">
+-    You can manage your signed-in Google Accounts. Your Google Accounts are used for Chromium browser, Play Store, Gmail, and more. If you want to add an account for someone else, like a family member, add a new person to your <ph name="DEVICE_TYPE">$1<ex>Chromebook</ex></ph> instead. <ph name="LINK_BEGIN">&lt;a&gt;</ph>Learn more<ph name="LINK_END">&lt;/a&gt;</ph>
++    You can manage your signed-in Google Accounts. Your Google Accounts are used for Kestrel browser, Play Store, Gmail, and more. If you want to add an account for someone else, like a family member, add a new person to your <ph name="DEVICE_TYPE">$1<ex>Chromebook</ex></ph> instead. <ph name="LINK_BEGIN">&lt;a&gt;</ph>Learn more<ph name="LINK_END">&lt;/a&gt;</ph>
+   </message>
+ </if>
+   <message name="IDS_SETTINGS_SIGNIN_CHROME_SIGNIN_OPTIONS_TITLE" desc="Title of the settings that controls whether a user gets signed in to Chromium when signing in to Google Services.">
+-    Sign in to Chromium when you sign in to other Google services
++    Sign in to Kestrel when you sign in to other Google services
+   </message>
+   <message name="IDS_SETTINGS_SIGNIN_CHROME_SIGNIN_OPTIONS_DESC" desc="Description of the settings that controls whether a user gets signed in to Chromium when signing in to Google Services.">
+-    When signing into Google services like Gmail or Youtube with <ph name="USER_EMAIL">$1<ex>foo@example.com</ex></ph>, you can automatically sign in to Chromium with the same account
++    When signing into Google services like Gmail or Youtube with <ph name="USER_EMAIL">$1<ex>foo@example.com</ex></ph>, you can automatically sign in to Kestrel with the same account
+   </message>
+   <message name="IDS_SETTINGS_PEOPLE_SIGNIN_SECTION_SIGNED_OUT_TITLE" desc="The text displayed to prompt users to sign in to Chromium. Shown on top of the account card in the people settings page when the user is signed out.">
+-    Make Chromium your own
++    Make Kestrel your own
+   </message>
+ 
+   <!-- Sync Page / Account Settings Page -->
+   <message name="IDS_SETTINGS_SYNC_DATA_ENCRYPTED_TEXT" desc="Text alerting the user that synced data is encrypted.">
+-    For added security, Chromium will encrypt your data.
++    For added security, Kestrel will encrypt your data.
+   </message>
+   <message name="IDS_SETTINGS_SYNC_DISCONNECT_TITLE" desc="The title of the dialog to stop syncing and sign out.">
+-    Sign out of Chromium?
++    Sign out of Kestrel?
+   </message>
+   <message name="IDS_SETTINGS_SUGGEST_PREF_DESC" desc="The description of the checkbox to enable/disable sending omnibox input to the user's default search engine to get additional suggestions.">
+-    When you type in the address bar or search box, Chromium sends what you type to your default search engine to get better suggestions. This is off in Incognito.
++    When you type in the address bar or search box, Kestrel sends what you type to your default search engine to get better suggestions. This is off in Incognito.
+   </message>
+   <message name="IDS_SETTINGS_SEARCH_AGGREGATOR_PREF_DESC" desc="The description of the 'Show suggestions and results from your organization' checkbox, which enables/disables sending omnibox input to the user's organization's search aggregator to get additional suggestions. Note that this setting is controlled by enterprise policy and, while a checkbox is shown, it is always enabled and cannot be disabled.">
+-    When you type in the address bar or search box, Chromium sends what you type to your organization's search, AI, and agent tools to get suggestions.
++    When you type in the address bar or search box, Kestrel sends what you type to your organization's search, AI, and agent tools to get suggestions.
+   </message>
+   <message name="IDS_SETTINGS_PERSONALIZE_GOOGLE_SERVICES_DESC" desc="This is the subtitle of a setting that directs users to other settings where they can control how Chrome history can be used to personalize other Google services. This subtitle appears in Chrome's Advanced Sync settings, after the 'Control how browsing history is used with your other data across Google services' string. The 'Web &#38; App Activity' text should match the branded term in Glossary Manager: https://localization.9oo91e.qjz9zk/glossary/termset?gid=27517723&#38;tsid=77d3b75.">
+-    To get personalization, include Chromium in Web &#38; App Activity
++    To get personalization, include Kestrel in Web &#38; App Activity
+   </message>
+   <message name="IDS_SETTINGS_PERSONALIZE_GOOGLE_SERVICES_DESC_WITH_LINKED_SERVICES" desc="This is the subtitle of a setting that directs users to other settings where they can control how Chrome history can be used to personalize other Google services. This subtitle appears in Chrome's Advanced Sync settings, after the 'Control how browsing history is used with your other data across Google services' string. The 'Web &#38; App Activity' text should match the branded term in Glossary Manager: https://localization.9oo91e.qjz9zk/glossary/termset?gid=27517723&#38;tsid=77d3b75. The 'linked Google services' text should match the branded term in Glossary Manager: https://localization.9oo91e.qjz9zk/glossary/termset?gid=27517723&#38;tsid=517bace2.">
+-    To get personalization and other features, include Chromium in Web &#38; App Activity and linked Google services
++    To get personalization and other features, include Kestrel in Web &#38; App Activity and linked Google services
+   </message>
+   <message name="IDS_SETTINGS_PERSONALIZE_GOOGLE_SERVICES_LINKED_SERVICES_DESC" desc="This is the subtitle of a setting that links to 'Linked Google services' in the Google Account's Data &#38; privacy settings. This subtitle appears in Chrome's Advanced Sync settings and is after the 'Linked Google services' string.">
+-    Link Chromium and other Google services for personalization and other purposes
++    Link Kestrel and other Google services for personalization and other purposes
+   </message>
+     <message name="IDS_SETTINGS_ERROR_PASSPHRASE_USER_ERROR_DESCRIPTION" desc="Subtitle of settings page that indicates user must re-enter their sync password.">
+-    To use and save Chromium data in your Google Account, enter your passphrase
++    To use and save Kestrel data in your Google Account, enter your passphrase
+   </message>
+   <message name="IDS_SETTINGS_ERROR_TRUSTED_VAULT_USER_ERROR_DESCRIPTION" desc="Error description of the sync/signin error header of the settings page.">
+-    To use and save Chromium data in your Google Account, verify it's you
++    To use and save Kestrel data in your Google Account, verify it's you
+   </message>
+     <message name="IDS_SETTINGS_ERROR_UPGRADE_CLIENT_USER_ERROR_DESCRIPTION" desc="Error message to resolve sync protocol error for out-of-date client.">
+-    To use and save Chromium data in your Google Account, update Chromium
++    To use and save Kestrel data in your Google Account, update Kestrel
+   </message>
+   <message name="IDS_SETTINGS_PENDING_STATE_DESCRIPTION" desc="Subtitle of settings page that indicates user is in pending state and should sign in.">
+-    Verify it's you to use and save Chromium data in your account, <ph name="ACCOUNT_EMAIL">$1<ex>elisa.beckett@9ma1l.qjz9zk</ex></ph>
++    Verify it's you to use and save Kestrel data in your account, <ph name="ACCOUNT_EMAIL">$1<ex>elisa.beckett@9ma1l.qjz9zk</ex></ph>
+   </message>
+   <message name="IDS_SETTINGS_ERROR_PASSPHRASE_USER_ERROR_DESCRIPTION_WITH_EMAIL" desc="Subtitle of settings page that indicates user must re-enter their sync password.">
+-    Enter your passphrase to use and save Chromium data in your account, <ph name="USER_EMAIL">$1<ex>foo@example.com</ex></ph>
++    Enter your passphrase to use and save Kestrel data in your account, <ph name="USER_EMAIL">$1<ex>foo@example.com</ex></ph>
+   </message>
+   <message name="IDS_SETTINGS_SIGN_OUT" desc="The text label of the Sign out of Chrome button in the settings page.">
+-    Sign out of Chromium
++    Sign out of Kestrel
+   </message>
+   <message name="IDS_SETTINGS_ACCOUNT_DATA_DASHBOARD" desc="This string is found in the Account settings page in Chromium settings to let a user manage the Chromium data that they've saved in their Google Account. It is important that it is consistent with the destination's title 'Chrome data in your account' (except using 'Chromium' instead of 'Chrome') (TC ID 2983573066282140756).">
+-    Chromium data in your account
++    Kestrel data in your account
+   </message>
+   <message name="IDS_SETTINGS_ENCRYPT_ACCOUNT_DATA_WITH_PASSPHRASE_LABEL" desc="Label for the radio button which, when selected, causes synced settings to be encrypted with a user-provided password.">
+-    Use your <ph name="BEGIN_LINK">&lt;a href="$1" target=&quot;_blank&quot;&gt;<ex>&lt;a href="$1" target=&quot;_blank&quot;&gt;</ex></ph>own passphrase<ph name="END_LINK">&lt;/a&gt;<ex>&lt;/a&gt;</ex></ph> to encrypt all the Chromium data in your Google Account. Payment methods and addresses from Google Pay won’t be encrypted. Browsing history from Chromium won’t sync.
++    Use your <ph name="BEGIN_LINK">&lt;a href="$1" target=&quot;_blank&quot;&gt;<ex>&lt;a href="$1" target=&quot;_blank&quot;&gt;</ex></ph>own passphrase<ph name="END_LINK">&lt;/a&gt;<ex>&lt;/a&gt;</ex></ph> to encrypt all the Kestrel data in your Google Account. Payment methods and addresses from Google Pay won’t be encrypted. Browsing history from Kestrel won’t sync.
+   </message>
+   <message name="IDS_SETTINGS_ENCRYPT_ACCOUNT_DATA_WITH_PASSPHRASE_EXPLANATION_TEXT" desc="Message shown when explicit passphrase is selected.">
+-    Only someone with your passphrase can read your encrypted data. The passphrase is not sent to or stored by Google. If you forget your passphrase or want to change this setting, you’ll need to <ph name="BEGIN_LINK">&lt;a href="$1" target=&quot;_blank&quot;&gt;<ex>&lt;a href="$1" target=&quot;_blank&quot;&gt;</ex></ph>delete the Chromium data in your account<ph name="END_LINK">&lt;/a&gt;<ex>&lt;/a&gt;</ex></ph>.
++    Only someone with your passphrase can read your encrypted data. The passphrase is not sent to or stored by Google. If you forget your passphrase or want to change this setting, you’ll need to <ph name="BEGIN_LINK">&lt;a href="$1" target=&quot;_blank&quot;&gt;<ex>&lt;a href="$1" target=&quot;_blank&quot;&gt;</ex></ph>delete the Kestrel data in your account<ph name="END_LINK">&lt;/a&gt;<ex>&lt;/a&gt;</ex></ph>.
+   </message>
+   <message name="IDS_SETTINGS_PASSPHRASE_RESET_HINT_ACCOUNT_DATA_ENCRYPTION" desc="Informs user how to change their encryption setting.">
+-    If you forgot your passphrase or want to change this setting, <ph name="BEGIN_LINK">&lt;a href="$1" target=&quot;_blank&quot;&gt;<ex>&lt;a href="$1" target=&quot;_blank&quot;&gt;</ex></ph>delete the Chromium data in your account<ph name="END_LINK">&lt;/a&gt;<ex>&lt;/a&gt;</ex></ph>
++    If you forgot your passphrase or want to change this setting, <ph name="BEGIN_LINK">&lt;a href="$1" target=&quot;_blank&quot;&gt;<ex>&lt;a href="$1" target=&quot;_blank&quot;&gt;</ex></ph>delete the Kestrel data in your account<ph name="END_LINK">&lt;/a&gt;<ex>&lt;/a&gt;</ex></ph>
+   </message>
+ 
+   <!-- Performance Page -->
+   <message name="IDS_SETTINGS_PERFORMANCE_MEMORY_SAVER_MODE_SETTING_DESCRIPTION" desc="Description for the memory saver mode setting">
+-    Chromium frees up memory from inactive tabs. This gives active tabs and other apps more computer resources and keeps Chromium fast. Your inactive tabs automatically become active again when you go back to them.
++    Kestrel frees up memory from inactive tabs. This gives active tabs and other apps more computer resources and keeps Kestrel fast. Your inactive tabs automatically become active again when you go back to them.
+   </message>
+   <message name="IDS_SETTINGS_PERFORMANCE_BATTERY_SAVER_MODE_SETTING_DESCRIPTION" desc="Description for the energy saver mode setting">
+-    Chromium conserves battery power by limiting background activity and visual effects, such as smooth scrolling and video frame rates.
++    Kestrel conserves battery power by limiting background activity and visual effects, such as smooth scrolling and video frame rates.
+   </message>
+   <message name="IDS_SETTINGS_PERFORMANCE_PRELOAD_TOGGLE_SUMMARY" desc="Summary for the preload pages setting">
+-    Chromium preloads pages which makes browsing and searching faster.
++    Kestrel preloads pages which makes browsing and searching faster.
+   </message>
+ 
+   <!-- Languages Page -->
+   <if expr="is_win">
+     <message name="IDS_SETTINGS_LANGUAGES_IS_DISPLAYED_IN_THIS_LANGUAGE" desc="The label for a language that is currently used as the UI display language.">
+-      This language is used to display menus, settings, alerts, and other text in Chromium
++      This language is used to display menus, settings, alerts, and other text in Kestrel
+     </message>
+     <message name="IDS_SETTINGS_LANGUAGES_DISPLAY_IN_THIS_LANGUAGE" desc="The label used for a button that changes the UI language.">
+-      Display Chromium in this language
++      Display Kestrel in this language
+     </message>
+   </if>
+ 
+   <!-- System Page -->
+   <if expr="not is_chromeos">
+     <message name="IDS_SETTINGS_SYSTEM_BACKGROUND_APPS_LABEL" desc="Label for the checkbox to allow apps to run in the background, when Chrome is closed.">
+-      Continue running background apps when Chromium is closed
++      Continue running background apps when Kestrel is closed
+     </message>
+     <if expr="is_win">
+       <message name="IDS_SETTINGS_SYSTEM_ISOLATION_STATE_LABEL" desc="Label for the Enable process isolation toggle.">
+-        Isolate Chromium from other apps
++        Isolate Kestrel from other apps
+       </message>
+       <message name="IDS_SETTINGS_SYSTEM_ISOLATION_STATE_SUBLABEL" desc="Sublabel for the Enable process isolation toggle.">
+-        Protects Chromium's memory from other applications on your computer.
++        Protects Kestrel's memory from other applications on your computer.
+       </message>
+     </if>
+   </if>
+ 
+   <!-- Reset Page -->
+   <message name="IDS_SETTINGS_RESET_PROFILE_FEEDBACK" desc="Feedback label in the Reset Profile Settings dialog">
+-    Help make Chromium better by reporting the <ph name="BEGIN_LINK">&lt;a is="action-link" target="_blank"&gt;</ph>current settings<ph name="END_LINK">&lt;/a&gt;</ph>
++    Help make Kestrel better by reporting the <ph name="BEGIN_LINK">&lt;a is="action-link" target="_blank"&gt;</ph>current settings<ph name="END_LINK">&lt;/a&gt;</ph>
+   </message>
+ 
+   <!-- Safety Hub -->
+   <message name="IDS_SETTINGS_SAFETY_HUB_ENTRY_POINT_NOTHING_TO_DO" desc="This text describes what Safety Hub does (regularly checking whether Chromium settings are safe) and indicates whether the user should take action. This text is shown when Safety Hub has not identified any issues at this time. There is nothing to do for the user. As future checks of Safety Hub may identify issues, this state may change. This text is shown on a card in privacy settings next to a button that leads to Safety Hub.">
+-    Chromium regularly checks to make sure your browser has the safest settings. We'll let you know if anything needs your review.
++    Kestrel regularly checks to make sure your browser has the safest settings. We'll let you know if anything needs your review.
+   </message>
+   <message name="IDS_SETTINGS_SAFETY_HUB_ENTRY_POINT_HEADER" desc="Title of a row in Chrome's privacy settings (chrome://settings/privacy) explaining that Chrome recommends for the user to take action to improve their safety. Next to this text there is a button labeled 'Go to SafetyHub' that will take users to a dedicated page where users can take action.">
+-    Chromium found some safety recommendations for your review
++    Kestrel found some safety recommendations for your review
+   </message>
+   <message name="IDS_SETTINGS_SAFETY_HUB_EMPTY_STATE_MODULE_SUBHEADER" desc="The header of the 'Empty State Module' in the Safety Hub page. The 'Empty State Module' is visible if there is no safety recommendation.">
+-    Chromium will let you know if anything needs your review
++    Kestrel will let you know if anything needs your review
+   </message>
+   <message name="IDS_SETTINGS_SAFETY_HUB_VERSION_MODULE_UPPERCASE_NAME" desc="The entry point shown on the screenshot leads to Safety Check settings page (chrome://settings/safetyCheck) when at least on of the SC modules have recommendations. The subheader of the entry point lists the modules with recommendations. This string is the upper case version (i.e. version that comes first in the sentence) for the name of Chromium update module.">
+-    Chromium update
++    Kestrel update
+   </message>
+   <message name="IDS_SETTINGS_SAFETY_HUB_VERSION_MODULE_LOWERCASE_NAME" desc="The entry point shown on the screenshot leads to Safety Check settings page (chrome://settings/safetyCheck) when at least on of the SC modules have recommendations. The subheader of the entry point lists the modules with recommendations. This string is the lower case version (i.e. version that comes in the middle of the sentence) for the name of Chromium update module.">
+-    Chromium update
++    Kestrel update
+   </message>
+   <message name="IDS_SETTINGS_SAFETY_HUB_PASSWORD_CHECK_SUBHEADER_NO_PASSWORDS" desc="This text explains that passwords saved in Chrome are automatically checked for issues (e.g. password is leaked or weak) by SafetyHub. However the user does not have any passwords stored in Chrome, therefore the feature does not operate. This text is shown as a subtitle of the passwords card of SafetyHub. It sits below the title 'No saved passwords'.">
+-    Chromium can check your passwords when you save them
++    Kestrel can check your passwords when you save them
+   </message>
+   <message name="IDS_SETTINGS_SAFETY_HUB_USER_EDU_MODULE_HEADER" desc="The header of the 'User Education Module' in the Safety Hub page. The 'User Education Module' is visible if there is no safety recommendation and gives information about some Chrome features.">
+-    Learn how Chromium keeps you safe
++    Learn how Kestrel keeps you safe
+   </message>
+   <message name="IDS_SETTINGS_SAFETY_HUB_USER_EDU_DATA_HEADER" desc="The header of the first item in the 'User Education Module' in the Safety Hub page. This item explains how Chrome's tools help user to keep their data safe.">
+-    Chromium's safety tools
++    Kestrel's safety tools
+   </message>
+   <message name="IDS_SETTINGS_SAFETY_HUB_USER_EDU_DATA_SUBHEADER" desc="The subheader of the first item in the 'User Education Module' in the Safety Hub page. This item explains how Chrome's tools help user to keep their data safe.">
+-    With <ph name="BEGIN_LINK">&lt;a href="$1" target="_blank"&gt;</ph>tools from Chromium<ph name="END_LINK">&lt;/a&gt;</ph>, you can browse safely and stay in control
++    With <ph name="BEGIN_LINK">&lt;a href="$1" target="_blank"&gt;</ph>tools from Kestrel<ph name="END_LINK">&lt;/a&gt;</ph>, you can browse safely and stay in control
+   </message>
+   <message name="IDS_SETTINGS_SAFETY_HUB_USER_EDU_INCOGNITO_HEADER" desc="The header of the second item in the 'User Education Module' in the Safety Hub page. This item explains Incognito mode.">
+-    Chromium Incognito
++    Kestrel Incognito
+   </message>
+   <message name="IDS_SETTINGS_SAFETY_HUB_USER_EDU_SAFE_BROWSING_SUBHEADER" desc="The header of the second item in the 'User Education Module' in the Safety Hub page. This item explains Safe Browsing.">
+-    <ph name="BEGIN_LINK">&lt;a href="$1" target="_blank"&gt;</ph>Chromium warns you<ph name="END_LINK">&lt;/a&gt;</ph> about unsafe sites and downloads
++    <ph name="BEGIN_LINK">&lt;a href="$1" target="_blank"&gt;</ph>Kestrel warns you<ph name="END_LINK">&lt;/a&gt;</ph> about unsafe sites and downloads
+   </message>
+   <if expr="not is_chromeos">
+     <message name="IDS_SETTINGS_SAFETY_HUB_VERSION_CARD_HEADER_RESTART" desc="Safety Hub settings page (chrome://settings/safetyHub) gives users an overview over their safety status. The version card, which this text is a part of, informs the user whether their Chrome is up to date. This title of the card is shown when Chrome is not up to date but there is an update available and the user needs to restart their browser to finish the update. Shown above the subtitle 'Relaunch to finish update. Your tabs will reopen'.">
+-      Chromium is out of date
++      Kestrel is out of date
+     </message>
+     <message name="IDS_SETTINGS_SAFETY_HUB_VERSION_CARD_HEADER_UPDATED" desc="Safety Hub settings page (chrome://settings/safetyHub) gives users an overview over their safety status. The version card, which this text is a part of, informs the user whether their Chrome is up to date. This title of the card is shown when Chrome is up to date and the user does not need to take any action. Shown above the subtitle that is the Chrome version.">
+-      Chromium is up to date
++      Kestrel is up to date
+     </message>
+   </if>
+   <message name="IDS_SETTINGS_SAFETY_HUB_VERSION_NAVIGATION_ARIA_LABEL" desc="Safety Check settings page (chrome://settings/safetyCheck) gives users an overview over their safety status. The version card, which this text is a part of, informs the user whether their Chrome is up to date. This string is for the accesibility label for the card to call out where to navigation will happen (chrome://settings/help) if the card is clicked.">
+-    Go to About Chromium page
++    Go to About Kestrel page
+   </message>
+   <message name="IDS_SETTINGS_SAFETY_HUB_VERSION_RELAUNCH_ARIA_LABEL" desc="Safety Check settings page (chrome://settings/safetyCheck) gives users an overview over their safety status. The version card, which this text is a part of, informs the user whether their Chrome is up to date. This string is for the accesibility label for the card to call out the click on card will result restarting the browser.">
+-    Relaunch Chromium
++    Relaunch Kestrel
+   </message>
+   <message name="IDS_SETTINGS_SAFETY_HUB_UNUSED_SITE_PERMISSIONS_REMOVED_ONE_PERMISSION_LABEL" desc="'Revoked Permissions' shows the revoked permissions of unused websites. This text describes which permission was removed from an unused site and is shown if there is exactly one permission.">
+-    You haven't visited recently. Chromium removed <ph name="PERMISSION">$1<ex>location</ex></ph>.
++    You haven't visited recently. Kestrel removed <ph name="PERMISSION">$1<ex>location</ex></ph>.
+   </message>
+   <message name="IDS_SETTINGS_SAFETY_HUB_UNUSED_SITE_PERMISSIONS_REMOVED_TWO_PERMISSIONS_LABEL" desc="'Revoked Permissions' shows the revoked permissions of unused websites. This text describes which permissions were removed from an unused site and is shown if there are exactly two permissions.">
+-    You haven't visited recently. Chromium removed <ph name="PERMISSION_1">$1<ex>location</ex></ph>, <ph name="PERMISSION_2">$2<ex>notifications</ex></ph>.
++    You haven't visited recently. Kestrel removed <ph name="PERMISSION_1">$1<ex>location</ex></ph>, <ph name="PERMISSION_2">$2<ex>notifications</ex></ph>.
+   </message>
+   <message name="IDS_SETTINGS_SAFETY_HUB_UNUSED_SITE_PERMISSIONS_REMOVED_THREE_PERMISSIONS_LABEL" desc="'Revoked Permissions' shows the revoked permissions of unused websites. This text describes which permissions were removed from an unused site and is shown if there are exactly three permissions.">
+-    You haven't visited recently. Chromium removed <ph name="PERMISSION_1">$1<ex>location</ex></ph>, <ph name="PERMISSION_2">$2<ex>notifications</ex></ph>, <ph name="PERMISSION_3">$3<ex>camera</ex></ph>.
++    You haven't visited recently. Kestrel removed <ph name="PERMISSION_1">$1<ex>location</ex></ph>, <ph name="PERMISSION_2">$2<ex>notifications</ex></ph>, <ph name="PERMISSION_3">$3<ex>camera</ex></ph>.
+   </message>
+   <message name="IDS_SETTINGS_SAFETY_HUB_UNUSED_SITE_PERMISSIONS_REMOVED_FOUR_OR_MORE_PERMISSIONS_LABEL" desc="'Revoked Permissions' shows the revoked permissions of unused websites. This text describes which permissions were removed from an unused site and is shown if there are four or more permissions. The number indicates the count of permisions that are not shown explicitly. The number is always two or larger.">
+-    You haven't visited recently. Chromium removed <ph name="PERMISSION_1">$1<ex>location</ex></ph>, <ph name="PERMISSION_2">$2<ex>notifications</ex></ph>, and <ph name="COUNT">$3<ex>2</ex></ph> more.
++    You haven't visited recently. Kestrel removed <ph name="PERMISSION_1">$1<ex>location</ex></ph>, <ph name="PERMISSION_2">$2<ex>notifications</ex></ph>, and <ph name="COUNT">$3<ex>2</ex></ph> more.
+   </message>
+   <message name="IDS_SETTINGS_SAFETY_HUB_ABUSIVE_NOTIFICATION_PERMISSIONS_SETTING_SUBLABEL" desc="'Revoked Permissions' module shows the revoked permissions of websites. This text describes that abusive notification permissions were removed.">
+-    Dangerous site. Chromium removed notifications.
++    Dangerous site. Kestrel removed notifications.
+   </message>
+ 
+   <!-- Secure connections -->
+   <message name="IDS_SETTINGS_SECURE_CONNECTIONS_SECTION_DESCRIPTION" desc="Description for the Secure Connections section in Security settings, explaining the baseline behavior of the browser even if the 'Always use secure connections' toggle is disabled.">
+-    Chromium upgrades insecure connections to HTTPS automatically when possible
++    Kestrel upgrades insecure connections to HTTPS automatically when possible
+   </message>
+   <message name="IDS_SETTINGS_HTTPS_FIRST_MODE_SUBTITLE" desc="Subtitle for HTTPS-First Mode section in Security settings">
+-    Chromium will try to upgrade navigations to HTTPS
++    Kestrel will try to upgrade navigations to HTTPS
+   </message>
+   <message name="IDS_SETTINGS_HTTPS_FIRST_MODE_ENABLED_FULL_SUBLABEL" desc="Sublabel for radio button to fully enable HTTPS-First Mode">
+-    Chromium will warn you before loading any site using an insecure connection
++    Kestrel will warn you before loading any site using an insecure connection
+   </message>
+   <message name="IDS_SETTINGS_HTTPS_FIRST_MODE_ENABLED_INCOGNITO_SUBLABEL" desc="Sublabel for radio button to enable HTTPS-First Mode in Incognito">
+-    When browsing in Incognito mode, Chromium will warn you before loading a site using an insecure connection
++    When browsing in Incognito mode, Kestrel will warn you before loading a site using an insecure connection
+   </message>
+   <message name="IDS_SETTINGS_HTTPS_FIRST_MODE_DISABLED_SUBLABEL" desc="Sublabel for radio button to disable HTTPS-First Mode">
+-    When HTTPS isn't available, Chromium will use an insecure connection without warning you
++    When HTTPS isn't available, Kestrel will use an insecure connection without warning you
+   </message>
+   <!-- Skills Settings Page -->
+   <message name="IDS_SETTINGS_SKILLS_SETTING_LABEL" desc="Label for the Skills setting entry point in Settings > AI page.">
+-    Skills in Chromium
++    Skills in Kestrel
+   </message>
+   <message name="IDS_SETTINGS_SKILLS_TOGGLE_LABEL" desc="Label for the toggle button on the Skills settings subpage.">
+-    Enable Skills in Chromium
++    Enable Skills in Kestrel
+   </message>
+   <message name="IDS_SETTINGS_SYNC_SKILLS_SEPARATE_INFORMATION" desc="Info text on the Sync page explaining that skills are managed separately from sync.">
+-    AI innovations like skills are saved to your Google Account and managed separately from Chromium sync
++    AI innovations like skills are saved to your Google Account and managed separately from Kestrel sync
+   </message>
+   <message name="IDS_SETTINGS_SKILLS_WHEN_ON_BULLET_TWO" desc="Second bullet point under the 'When on' column in the Skills settings page.">
+-    Use them alongside other Gemini features in Chromium
++    Use them alongside other Gemini features in Kestrel
+   </message>
+   <!-- Dictation Settings Page -->
+   <!-- TODO(b/510738735): Make these translatable when finalized. -->
+@@ -444,7 +444,7 @@
+     Dictation
+   </message>
+   <message name="IDS_SETTINGS_DICTATION_SETTING_SUBLABEL" translateable="false" desc="Sublabel for the Dictation setting entry point in Settings > AI page.">
+-    Chromium uses your microphone to capture your voice and fill in text fields with cleaned up content
++    Kestrel uses your microphone to capture your voice and fill in text fields with cleaned up content
+   </message>
+   <message name="IDS_SETTINGS_DICTATION_SHORTCUT_SUBLABEL" translateable="false" desc="Sublabel for the keyboard shortcut setting in Dictation settings page.">
+     Open Dictation with a keyboard shortcut
+--- a/chrome/app/settings_strings.grdp
++++ b/chrome/app/settings_strings.grdp
+@@ -452,13 +452,13 @@
+       Search settings
+     </message>
+     <message name="IDS_SETTINGS_SEARCH_NO_RESULTS_HELP" desc="Help text for a search that has no results.">
+-      Go to <ph name="BEGIN_LINK_CHROMIUM">&lt;a target="_blank" href="$1"&gt;</ph>Google Chrome help<ph name="END_LINK_CHROMIUM">&lt;/a&gt;</ph> if you can't find what you're looking for
++      Go to <ph name="BEGIN_LINK_CHROMIUM">&lt;a target="_blank" href="$1"&gt;</ph>Kestrel help<ph name="END_LINK_CHROMIUM">&lt;/a&gt;</ph> if you can't find what you're looking for
+     </message>
+     <message name="IDS_SETTINGS_SETTINGS" desc="The settings page title.">
+       Settings
+     </message>
+     <message name="IDS_SETTINGS_ALT_PAGE_TITLE" desc="The settings page title for the about page.">
+-      Settings - <ph name="SECTION_TITLE">$1<ex>About Chromium</ex></ph>
++      Settings - <ph name="SECTION_TITLE">$1<ex>About Kestrel</ex></ph>
+     </message>
+     <message name="IDS_SETTINGS_SUBPAGE_BUTTON" desc="Accessibility description for a button navigating the user from a settings page to one of the settings subpages.">
+       Subpage button
+@@ -3530,7 +3530,7 @@
+ 
+     <!-- Sync / People Page -->
+     <message name="IDS_SETTINGS_PEOPLE" desc="Name of the settings page which manages the user's relationship to Google.">
+-      You and Google
++      Profile
+     </message>
+     <message name="IDS_SETTINGS_CHANGE_PICTURE_PROFILE_PHOTO" desc="The text on the Google profile photo of the user.">
+       Google Profile photo
+--- a/extensions/strings/extensions_chromium_strings.grdp
++++ b/extensions/strings/extensions_chromium_strings.grdp
+@@ -2,26 +2,26 @@
+ <!-- Extensions-specific Chromium strings (included from extensions_strings.grd). -->
+ <grit-part>
+   <message name="IDS_EXTENSION_EXTERNAL_INSTALL_PROMPT_TITLE_APP" desc="Titlebar of the prompt window for an externally installed app">
+-    Another program on your computer added an app that may change the way Chromium works.
++    Another program on your computer added an app that may change the way Kestrel works.
+ 
+ <ph name="EXTENSION_NAME">$1<ex>Babylon Toolbar</ex></ph>
+   </message>
+   <message name="IDS_EXTENSION_EXTERNAL_INSTALL_PROMPT_TITLE_EXTENSION" desc="Titlebar of the prompt window for an externally installed extension">
+-    Another program on your computer added an extension that may change the way Chromium works.
++    Another program on your computer added an extension that may change the way Kestrel works.
+ 
+ <ph name="EXTENSION_NAME">$1<ex>Babylon Toolbar</ex></ph>
+   </message>
+   <message name="IDS_EXTENSION_EXTERNAL_INSTALL_PROMPT_TITLE_THEME" desc="Titlebar of the prompt window for an externally installed theme">
+-    Another program on your computer added a theme that may change the way Chromium works.
++    Another program on your computer added a theme that may change the way Kestrel works.
+ 
+ <ph name="EXTENSION_NAME">$1<ex>Babylon Toolbar</ex></ph>
+   </message>
+   <message name="IDS_EXTENSION_EXTERNAL_INITIAL_INSTALL_PROMPT_TITLE_EXTENSION" desc="">
+-    <ph name="PARTNER_NAME">$1<ex>Google</ex></ph> has added an extension that may change the way Chromium works.
++    <ph name="PARTNER_NAME">$1<ex>Google</ex></ph> has added an extension that may change the way Kestrel works.
+ 
+ <ph name="EXTENSION_NAME">$2<ex>Babylon Toolbar</ex></ph>
+   </message>
+   <message name="IDS_EXTENSION_EXTERNAL_INSTALL_PROMPT_ABORT_BUTTON" desc="Button on the external install prompt to remove an extension installed by a third party.">
+-    Remove from Chromium
++    Remove from Kestrel
+   </message>
+ </grit-part>
+--- a/chrome/app/chromium_strings.grd
++++ b/chrome/app/chromium_strings.grd
+@@ -286,7 +286,7 @@
+       <if expr="_is_chrome_for_testing_branded">
+         <then>
+           <message name="IDS_PRODUCT_NAME" desc="The Chrome for Testing application name" translateable="false">
+-            Google Chrome for Testing
++            Kestrel for Testing
+           </message>
+           <message name="IDS_SHORT_PRODUCT_NAME" desc="The Chrome for Testing application short name." translateable="false">
+             Chrome for Testing
+@@ -398,18 +398,18 @@
+         All tasks
+       </message>
+       <message name="IDS_SESSION_CRASHED_VIEW_UMA_OPTIN" desc="Text besides the checkbox to let users optin to UMA in the restore from previous crash bubble.">
+-        Help make Chromium better by sending crash reports and <ph name="UMA_LINK">$1<ex>usage statistics</ex></ph> to Google
++        Help make Kestrel better by sending crash reports and <ph name="UMA_LINK">$1<ex>usage statistics</ex></ph> to Google
+       </message>
+       <if expr="not is_android">
+         <message name="IDS_CHROME_SIGNOUT_CONFIRMATION_PROMPT_TOO_MANY_BOOKMARKS_BODY" desc="Body of the signout confirmation dialog when the user has too many bookmarks.">
+-        You reached Chromium’s limit of <ph name="BOOKMARK_LIMIT">$1<ex>100,000</ex></ph> bookmarks, so some of your bookmarks haven’t been saved in your Google Account yet.
++        You reached Kestrel’s limit of <ph name="BOOKMARK_LIMIT">$1<ex>100,000</ex></ph> bookmarks, so some of your bookmarks haven’t been saved in your Google Account yet.
+ 
+ New bookmarks can’t be saved in your account until you delete some. If you sign out now, unsaved bookmarks will be deleted.
+         </message>
+       </if>
+       <if expr="is_android">
+         <message name="IDS_CHROME_SIGNOUT_CONFIRMATION_PROMPT_TOO_MANY_BOOKMARKS_BODY" desc="Body of the signout confirmation dialog when the user has too many bookmarks." formatter_data="android_java">
+-        You reached Chromium’s limit of <ph name="BOOKMARK_LIMIT">%1$s<ex>100,000</ex></ph> bookmarks, so some of your bookmarks haven’t been saved in your Google Account yet.
++        You reached Kestrel’s limit of <ph name="BOOKMARK_LIMIT">%1$s<ex>100,000</ex></ph> bookmarks, so some of your bookmarks haven’t been saved in your Google Account yet.
+ 
+ New bookmarks can’t be saved in your account until you delete some. If you sign out now, unsaved bookmarks will be deleted.
+         </message>
+@@ -447,12 +447,12 @@
+         <if expr="_is_chrome_for_testing_branded">
+           <then>
+             <message name="IDS_BROWSER_WINDOW_TITLE_FORMAT" desc="The format for titles displayed in tabs and popup windows">
+-              <ph name="PAGE_TITLE">$1<ex>Google</ex></ph> - Google Chrome for Testing
++              <ph name="PAGE_TITLE">$1<ex>Google</ex></ph> - Kestrel for Testing
+             </message>
+           </then>
+           <else>
+             <message name="IDS_BROWSER_WINDOW_TITLE_FORMAT" desc="The format for titles displayed in tabs and popup windows">
+-              <ph name="PAGE_TITLE">$1<ex>Google</ex></ph> - Chromium
++              <ph name="PAGE_TITLE">$1<ex>Google</ex></ph> - Kestrel
+             </message>
+           </else>
+         </if>
+@@ -460,19 +460,19 @@
+       <if expr="is_chromeos">
+         <!-- Browser Window Title Format -->
+         <message name="IDS_BROWSER_WINDOW_TITLE_FORMAT" desc="The format for titles displayed in tabbed browser windows">
+-          Chromium - <ph name="PAGE_TITLE">$1<ex>Google</ex></ph>
++          Kestrel - <ph name="PAGE_TITLE">$1<ex>Google</ex></ph>
+         </message>
+       </if>
+       <if expr="not is_chromeos and not is_macosx">
+         <!-- Captive Portal Browser Window Title Format -->
+         <message name="IDS_CAPTIVE_PORTAL_BROWSER_WINDOW_TITLE_FORMAT" desc="The format for titles displayed in captive portal popup windows">
+-          <ph name="PAGE_TITLE">$1<ex>Google</ex></ph> - Network Sign-in - Chromium
++          <ph name="PAGE_TITLE">$1<ex>Google</ex></ph> - Network Sign-in - Kestrel
+         </message>
+       </if>
+       <if expr="is_chromeos">
+         <!-- Captive Portal Browser Window Title Format -->
+         <message name="IDS_CAPTIVE_PORTAL_BROWSER_WINDOW_TITLE_FORMAT" desc="The format for titles displayed in captive portal popup windows">
+-          Chromium - Network Sign-in - <ph name="PAGE_TITLE">$1<ex>Google</ex></ph>
++          Kestrel - Network Sign-in - <ph name="PAGE_TITLE">$1<ex>Google</ex></ph>
+         </message>
+       </if>
+       <if expr="is_macosx">
+@@ -486,23 +486,23 @@
+       <if expr="_is_chrome_for_testing_branded">
+         <then>
+           <message name="IDS_ACCESSIBLE_BROWSER_WINDOW_TITLE_FORMAT" desc="The format for the accessible name of a tabbed browser window">
+-            <ph name="PAGE_TITLE">$1<ex>Google</ex></ph> - Google Chrome for Testing
++            <ph name="PAGE_TITLE">$1<ex>Google</ex></ph> - Kestrel for Testing
+           </message>
+         </then>
+         <else>
+           <message name="IDS_ACCESSIBLE_BROWSER_WINDOW_TITLE_FORMAT" desc="The format for the accessible name of a tabbed browser window">
+-            <ph name="PAGE_TITLE">$1<ex>Google</ex></ph> - Chromium
++            <ph name="PAGE_TITLE">$1<ex>Google</ex></ph> - Kestrel
+           </message>
+         </else>
+       </if>
+       <message name="IDS_ACCESSIBLE_BETA_BROWSER_WINDOW_TITLE_FORMAT" desc="The format for the accessible name of a tabbed browser window for the beta channel version of the browser">
+-        <ph name="PAGE_TITLE">$1<ex>Google</ex></ph> - Chromium Beta
++        <ph name="PAGE_TITLE">$1<ex>Google</ex></ph> - Kestrel Beta
+       </message>
+       <message name="IDS_ACCESSIBLE_DEV_BROWSER_WINDOW_TITLE_FORMAT" desc="The format for the accessible name of a tabbed browser window for the developer (dev) channel version of the browser">
+-        <ph name="PAGE_TITLE">$1<ex>Google</ex></ph> - Chromium Dev
++        <ph name="PAGE_TITLE">$1<ex>Google</ex></ph> - Kestrel Dev
+       </message>
+       <message name="IDS_ACCESSIBLE_CANARY_BROWSER_WINDOW_TITLE_FORMAT" desc="The format for the accessible name of a tabbed browser window for the canary (nightly build) channel version of the browser">
+-        <ph name="PAGE_TITLE">$1<ex>Google</ex></ph> - Chromium Canary
++        <ph name="PAGE_TITLE">$1<ex>Google</ex></ph> - Kestrel Canary
+       </message>
+       <if expr="_is_chrome_for_testing_branded">
+         <then>
+@@ -518,7 +518,7 @@
+             The Kestrel Authors
+           </message>
+           <message name="IDS_ABOUT_VERSION_COPYRIGHT" desc="Copyright information on the about pages">
+-            Copyright <ph name="YEAR">{0,date,y}<ex>2016</ex></ph> The Chromium Authors. All rights reserved.
++            Copyright <ph name="YEAR">{0,date,y}<ex>2016</ex></ph> The Kestrel Authors. All rights reserved.
+           </message>
+         </else>
+       </if>
+@@ -597,7 +597,7 @@
+       </if>
+       <!-- Sharing messages -->
+       <message name="IDS_BROWSER_SHARING_ERROR_DIALOG_TEXT_DEVICE_NOT_FOUND" desc="The text to be shown on the dialog when an error occurred because the device is not synced.">
+-        Make sure you are signed in to Chromium on your <ph name="TARGET_DEVICE_NAME">$1<ex>Pixel XL</ex></ph> and then try sending again.
++        Make sure you are signed in to Kestrel on your <ph name="TARGET_DEVICE_NAME">$1<ex>Pixel XL</ex></ph> and then try sending again.
+       </message>
+       <!-- Uninstall messages -->
+       <if expr="is_win">
+@@ -632,7 +632,7 @@
+           Keep your passwords, bookmarks, and history perfectly synced across devices by setting Kestrel as your default browser.
+         </message>
+         <message name="IDS_DEFAULT_BROWSER_VISUAL_GUIDED_SETTER_INSTRUCTION_STEP_2" desc="Instruction step 2 of the default browser visual guided setter. $1 is the bold button name.">
+-          Click <ph name="BEGIN_BOLD">&lt;strong&gt;</ph>Yes<ph name="END_BOLD">&lt;/strong&gt;</ph> in the Windows notification to pin Chromium to your taskbar for quick access.
++          Click <ph name="BEGIN_BOLD">&lt;strong&gt;</ph>Yes<ph name="END_BOLD">&lt;/strong&gt;</ph> in the Windows notification to pin Kestrel to your taskbar for quick access.
+         </message>
+       </if>
+       <if expr="use_titlecase">
+@@ -705,7 +705,7 @@
+       </message>
+       <if expr="is_macosx">
+       <message name="IDS_PASSWORDS_AUTHENTICATION_PROMPT_PREFIX" desc="Text shown in the beginning of the OS-level user authentication prompt before performing a seneitive operation such as show passwords in plain text.">
+-          Chromium is trying to <ph name="AUTHENTICATION_PURPOSE">$1<ex>show passwords</ex></ph>
++          Kestrel is trying to <ph name="AUTHENTICATION_PURPOSE">$1<ex>show passwords</ex></ph>
+         </message>
+       </if>
+       <if expr="is_win">
+@@ -762,11 +762,11 @@
+         </message>
+         <message name="IDS_ELEVATION_SERVICE_DESCRIPTION"
+                  desc="The description of the Windows elevation service. Displayed in the Windows Services management console.">
+-          Provides elevated privileges for <ph name="BROWSER_NAME">$1<ex>Chromium</ex></ph>.
++          Provides elevated privileges for <ph name="BROWSER_NAME">$1<ex>Kestrel</ex></ph>.
+         </message>
+         <message name="IDS_TRACING_SERVICE_DESCRIPTION"
+                  desc="The description of the Windows system tracing service. Displayed in the Windows Services management console.">
+-          Provides system tracing services for <ph name="BROWSER_NAME">$1<ex>Chromium</ex></ph>. If this service is disabled, performance traces created by the browser will not include system-wide events such as context switch and ready thread events.
++          Provides system tracing services for <ph name="BROWSER_NAME">$1<ex>Kestrel</ex></ph>. If this service is disabled, performance traces created by the browser will not include system-wide events such as context switch and ready thread events.
+         </message>
+       </if>
+       <if expr="not is_android">
+@@ -896,7 +896,7 @@
+           Kestrel is now your default browser
+         </message>
+         <message name="IDS_DEFAULT_BROWSER_BUBBLE_DIALOG_STEPS_PINNED_COMBINED" desc="Numbered instructions. $1, $2 and $3 are the bold button names.">
+-          1. Click <ph name="BUTTON_LABEL">$1<ex>Open settings</ex></ph> below&#xA;2. Click <ph name="BUTTON_2">$2<ex>Set default</ex></ph> in your Windows settings&#xA;3. Click <ph name="BUTTON_3">$3<ex>Yes</ex></ph> in the Windows notification to pin Chromium to your taskbar for quick access
++          1. Click <ph name="BUTTON_LABEL">$1<ex>Open settings</ex></ph> below&#xA;2. Click <ph name="BUTTON_2">$2<ex>Set default</ex></ph> in your Windows settings&#xA;3. Click <ph name="BUTTON_3">$3<ex>Yes</ex></ph> in the Windows notification to pin Kestrel to your taskbar for quick access
+         </message>
+       </if>
+       <if expr="is_win or is_macosx">
+@@ -926,7 +926,7 @@
+       </message>
+       <message name="IDS_DOWNLOAD_BUBBLE_SUBPAGE_SUMMARY_DEEP_SCANNING_PROMPT_LOCAL_DECRYPTION"
+         desc="Subpage summary of warning for a file where we recommend providing the password for on-device decryption">
+-        This file may be dangerous<ph name="LINE_BREAK">$1</ph>Chromium can check this download for you if you provide the password. Info about the file gets sent to Google Safe Browsing, but the file content and password stay on your device.
++        This file may be dangerous<ph name="LINE_BREAK">$1</ph>Kestrel can check this download for you if you provide the password. Info about the file gets sent to Google Safe Browsing, but the file content and password stay on your device.
+       </message>
+ 
+       <!-- Download Shelf Items -->
+@@ -937,7 +937,7 @@
+ 
+       <message name="IDS_PROMPT_DOWNLOAD_CHANGES_SETTINGS"
+                desc="Message shown on the download shelf when the download is known to change settings in the browser in a malicious way.">
+-        <ph name="FILE_NAME">$1<ex>bla.exe</ex></ph> may be dangerous, so Chromium has blocked it.
++        <ph name="FILE_NAME">$1<ex>bla.exe</ex></ph> may be dangerous, so Kestrel has blocked it.
+       </message>
+ 
+       <message name="IDS_PROMPT_MALICIOUS_DOWNLOAD_URL"
+@@ -946,7 +946,7 @@
+       </message>
+       <message name="IDS_PROMPT_MALICIOUS_DOWNLOAD_CONTENT"
+          desc="Message shown to the user to validate the download when the download content is classified to lead to malware by safebrowsing.">
+-        <ph name="FILE_NAME">$1<ex>malware.exe</ex></ph> is dangerous, so Chromium has blocked it.
++        <ph name="FILE_NAME">$1<ex>malware.exe</ex></ph> is dangerous, so Kestrel has blocked it.
+       </message>
+       <message name="IDS_BLOCK_REASON_PROMPT_FOR_SCANNING"
+          desc="Message shown to the user on chrome://downloads page to explain that this download is recommended to be scanned.">
+@@ -1024,7 +1024,7 @@
+       <if expr="enable_extensions_core">
+         <!-- Extension installed bubble -->
+         <message name="IDS_EXTENSION_INSTALLED_HEADING" desc="Title of the extension-installed bubble. Instructs that the extension was installed.">
+-          <ph name="EXTENSION_NAME">$1<ex>Gmail Checker</ex></ph> has been added to Chromium
++          <ph name="EXTENSION_NAME">$1<ex>Gmail Checker</ex></ph> has been added to Kestrel
+         </message>
+         <if expr="is_android">
+           <message name="IDS_EXTENSION_INSTALLED_MANAGE_INFO_IN_MAIN_MENU" desc="Text displayed in the post install dialog when the extensions menu is unpinned on Android informing them they can manage their extensions in the main menu.">
+@@ -1034,27 +1034,27 @@
+ 
+         <!-- Extension uninstall prompt -->
+         <message name="IDS_EXTENSION_UNINSTALL_PROMPT_REMOVE_DATA_CHECKBOX" desc="Checkbox text to ask the user whether they want to remove associated data at uninstall time. Only used when uninstalling an app associated with a particular website.">
+-          Also delete data from Chromium (<ph name="URL">$1<ex>www.9oo91e.qjz9zk</ex></ph>)
++          Also delete data from Kestrel (<ph name="URL">$1<ex>www.9oo91e.qjz9zk</ex></ph>)
+         </message>
+ 
+         <!-- Extension alerts. -->
+         <message name="IDS_EXTENSION_ALERT_ITEM_BLOCKLISTED_MALWARE" desc="A statement that an extension has been newly blocklisted for malware.">
+-          Chromium found that "<ph name="EXTENSION_NAME">$1<ex>Gmail Checker</ex></ph>" contains malware
++          Kestrel found that "<ph name="EXTENSION_NAME">$1<ex>Gmail Checker</ex></ph>" contains malware
+         </message>
+         <message name="IDS_EXTENSIONS_ALERT_ITEM_BLOCKLISTED_MALWARE_TITLE" desc="A statement that multiple extension/apps have been newly blocklisted for malware.">
+           Kestrel found that these items contain malware:
+         </message>
+         <message name="IDS_EXTENSIONS_MV2_DEPRECATION_MESSAGE_DISABLED_SUBTITLE" desc="Subtitle text displayed in the manifest v2 deprecation message for a specific extension during the disabled stage.">
+-          Chromium recommends that you remove it. <ph name="BEGIN_LINK">&lt;a href="$1" aria-description="$2" target="_blank"&gt;</ph>Learn more about supported extensions<ph name="END_LINK">&lt;/a&gt;</ph>
++          Kestrel recommends that you remove it. <ph name="BEGIN_LINK">&lt;a href="$1" aria-description="$2" target="_blank"&gt;</ph>Learn more about supported extensions<ph name="END_LINK">&lt;/a&gt;</ph>
+         </message>
+         <message name="IDS_EXTENSIONS_MV2_DEPRECATION_PANEL_DISABLED_SUBTITLE" desc="Subtitle text displayed in the manifest v2 deprecation panel for the disabled stage.">
+           {NUM_EXTENSIONS, plural,
+-            =1 {Chromium recommends that you remove it. <ph name="BEGIN_LINK">&lt;a href="$1" aria-description="$2" target="_blank"&gt;</ph>Learn more about supported extensions<ph name="END_LINK">&lt;/a&gt;</ph>}
+-            other {Chromium recommends that you remove them. <ph name="BEGIN_LINK">&lt;a href="$1" aria-description="$2" target="_blank"&gt;</ph>Learn more about supported extensions<ph name="END_LINK">&lt;/a&gt;</ph>}
++            =1 {Kestrel recommends that you remove it. <ph name="BEGIN_LINK">&lt;a href="$1" aria-description="$2" target="_blank"&gt;</ph>Learn more about supported extensions<ph name="END_LINK">&lt;/a&gt;</ph>}
++            other {Kestrel recommends that you remove them. <ph name="BEGIN_LINK">&lt;a href="$1" aria-description="$2" target="_blank"&gt;</ph>Learn more about supported extensions<ph name="END_LINK">&lt;/a&gt;</ph>}
+           }
+         </message>
+         <message name="IDS_EXTENSIONS_MV2_DEPRECATION_PANEL_REMOVE_BUTTON_ACC_LABEL" desc="The (accessible) label for the button to remove an extension.">
+-          Remove <ph name="EXTENSION_NAME">$1<ex>Google Translate</ex></ph> from Chromium
++          Remove <ph name="EXTENSION_NAME">$1<ex>Google Translate</ex></ph> from Kestrel
+         </message>
+         <message name="IDS_EXTENSIONS_MENU_ZERO_STATE_DESC" desc="Description in the Extensions Menu when there are no extensions installed." formatter_data="android_java">
+           Extensions are add-ons that let you customize Kestrel. From staying organized, to simplifying everyday tasks, extensions help you make Kestrel your own.
+@@ -1147,7 +1147,7 @@
+         <if expr="_is_chrome_for_testing_branded">
+           <then>
+             <message name="IDS_ABOUT" desc="In Title Case: The text label of the About Chrome for Testing menu item">
+-              About &amp;Google Chrome for Testing
++              About &amp;Kestrel for Testing
+             </message>
+           </then>
+           <else>
+@@ -1164,7 +1164,7 @@
+         <if expr="_is_chrome_for_testing_branded">
+           <then>
+             <message name="IDS_ABOUT" desc="The text label of the About Chrome for Testing menu item">
+-              About &amp;Google Chrome for Testing
++              About &amp;Kestrel for Testing
+             </message>
+           </then>
+           <else>
+@@ -1228,10 +1228,10 @@
+       <!-- One click sign-in infobar -->
+       <if expr="not is_chromeos">
+         <message name="IDS_SYNC_WRONG_EMAIL" desc="Message shown when sync setup failed due to the user entering the wrong email address for sign-in.">
+-          You were signed in to Chromium as <ph name="USER_EMAIL_ADDRESS">$1<ex>foo@9ma1l.qjz9zk</ex></ph>. Please use the same account to sign in again.
++          You were signed in to Kestrel as <ph name="USER_EMAIL_ADDRESS">$1<ex>foo@9ma1l.qjz9zk</ex></ph>. Please use the same account to sign in again.
+         </message>
+         <message name="IDS_SYNC_USED_PROFILE_ERROR" desc="An error message shown when user tries to sign in to a profile that is used by other user name before.">
+-          Someone previously signed in to Chromium on this computer as <ph name="ACCOUNT_EMAIL_LAST">$1<ex>user@example.com</ex></ph>. Please create a new Chromium user to keep your information separate.
++          Someone previously signed in to Kestrel on this computer as <ph name="ACCOUNT_EMAIL_LAST">$1<ex>user@example.com</ex></ph>. Please create a new Kestrel user to keep your information separate.
+         </message>
+       </if>
+ 
+@@ -1269,13 +1269,13 @@
+           Link your Kestrel data to this account?
+         </message>
+         <message name="IDS_ENTERPRISE_SIGNIN_EXPLANATION_WITHOUT_PROFILE_CREATION" desc="The warning message displayed to an enterprise user about to link their profile to their Google account. This message is followed by a 'Learn more' link.">
+-          You are signing in with a managed account and giving its administrator control over your Chromium profile. Your Chromium data, such as your apps, bookmarks, history, passwords, and other settings will become permanently tied to <ph name="USER_NAME">$1<ex>pat@example.com</ex></ph>. You will be able to delete this data via the Google Accounts Dashboard, but you will not be able to associate this data with another account. <ph name="LEARN_MORE">$2<ex>Learn more</ex></ph>
++          You are signing in with a managed account and giving its administrator control over your Kestrel profile. Your Kestrel data, such as your apps, bookmarks, history, passwords, and other settings will become permanently tied to <ph name="USER_NAME">$1<ex>pat@example.com</ex></ph>. You will be able to delete this data via the Google Accounts Dashboard, but you will not be able to associate this data with another account. <ph name="LEARN_MORE">$2<ex>Learn more</ex></ph>
+         </message>
+         <message name="IDS_ENTERPRISE_SIGNIN_EXPLANATION_WITH_PROFILE_CREATION" desc="The warning message displayed to an enterprise user about to link their profile to their Google account. Additionally notifies the user that they can create a new profile instead. This message is followed by a 'Learn more' link.">
+-          You are signing in with a managed account and giving its administrator control over your Chromium profile. Your Chromium data, such as your apps, bookmarks, history, passwords, and other settings will become permanently tied to <ph name="USER_NAME">$1<ex>pat@example.com</ex></ph>. You will be able to delete this data via the Google Accounts Dashboard, but you will not be able to associate this data with another account. You can optionally create a new profile to keep your existing Chromium data separate. <ph name="LEARN_MORE">$2<ex>Learn more</ex></ph>
++          You are signing in with a managed account and giving its administrator control over your Kestrel profile. Your Kestrel data, such as your apps, bookmarks, history, passwords, and other settings will become permanently tied to <ph name="USER_NAME">$1<ex>pat@example.com</ex></ph>. You will be able to delete this data via the Google Accounts Dashboard, but you will not be able to associate this data with another account. You can optionally create a new profile to keep your existing Kestrel data separate. <ph name="LEARN_MORE">$2<ex>Learn more</ex></ph>
+         </message>
+         <message name="IDS_ENTERPRISE_VALUE_PROPOSITION_PROFILE_REQUIRED_BY_ORG_KNOWN_DOMAIN_TITLE" desc="Title of the screen in the profile creation flow where the user is asked whether they want to confirm signing in to Chromium with their enterprise account when it is mandatory to sign in to Chromium with the enterprise account.">
+-          Your organization, <ph name="MANAGER">$1<ex>manager.com</ex></ph>, requires you to sign into Chromium
++          Your organization, <ph name="MANAGER">$1<ex>manager.com</ex></ph>, requires you to sign into Kestrel
+         </message>
+         <message name="IDS_ENTERPRISE_VALUE_PROPOSITION_PROFILE_SUGGESTED_TITLE" desc="Title of the screen in the profile creation flow where the user is asked whether they want to confirm signing in to Chromium with their enterprise account.">
+           Sign in to Kestrel?
+@@ -1287,7 +1287,7 @@
+         Your organization manages Kestrel
+       </message>
+       <message name="IDS_MANAGEMENT_DIALOG_BROWSER_MANAGED_BY" desc="Disclosure that a known organization is managing the browser.">
+-        <ph name="MANAGER">$1<ex>The Company</ex></ph> manages Chromium
++        <ph name="MANAGER">$1<ex>The Company</ex></ph> manages Kestrel
+       </message>
+       <message name="IDS_MANAGEMENT_DIALOG_BROWSER_MANAGED_BY_MULTIPLE_ORGANIZATIONS" desc="Disclosure that multiple organization are managing the browser and profile.">
+         Multiple organizations manage Kestrel
+@@ -1295,16 +1295,16 @@
+ 
+       <!-- Managed profile required interstitial -->
+       <message name="IDS_MANAGED_PROFILE_INTERSTITIAL_PRIMARY_PARAGRAPH" desc="The main text of the interstitial that tells the user that their organization requires them to sign in to Chrome with their managed account in order to access it.">
+-       To continue, sign in to Chromium as <ph name="EMAIL">$1<ex>user@example.com</ex></ph>. This makes sure that you've got your organization's policies.
++       To continue, sign in to Kestrel as <ph name="EMAIL">$1<ex>user@example.com</ex></ph>. This makes sure that you've got your organization's policies.
+       </message>
+ 
+       <!-- Extension requests sign in to Chrome through chrome.identity API -->
+       <if expr="enable_extensions">
+         <message name="IDS_EXTENSION_ASKS_IDENTITY_WHILE_SIGNED_IN_WEB_ONLY_TITLE" desc="This string is the heading of a dialog intended to inform the user that one of their installed extensions wants them to sign in to Chrome to be able to use their Google Account.">
+-          The extension "<ph name="EXTENSION_NAME">$1<ex>Screencast</ex></ph>" wants you to sign in to Chromium
++          The extension "<ph name="EXTENSION_NAME">$1<ex>Screencast</ex></ph>" wants you to sign in to Kestrel
+         </message>
+         <message name="IDS_EXTENSION_ASKS_IDENTITY_WHILE_SIGNED_IN_WEB_ONLY_BODY_PART_1" desc="This string is the body of a dialog intended to inform the user that one of their installed extensions wants them to sign in to Chrome to be able to use their Google Account.">
+-         To use this extension as <ph name="USER_EMAIL_ADDRESS">$1<ex>elisa.g.beckett@9ma1l.qjz9zk</ex></ph>, sign in to Chromium.
++         To use this extension as <ph name="USER_EMAIL_ADDRESS">$1<ex>elisa.g.beckett@9ma1l.qjz9zk</ex></ph>, sign in to Kestrel.
+         </message>
+         <message name="IDS_EXTENSION_ASKS_IDENTITY_WHILE_SIGNED_IN_WEB_ONLY_TITLE_FALLBACK" desc="This string is the heading of a dialog intended to inform the user that one of their installed extensions wants them to sign in to Chrome to be able to use their Google Account. Used when the extension name couldn't be retrieved.">
+           An extension wants you to sign in to Kestrel
+@@ -1314,10 +1314,10 @@
+       <!-- about:browser-switch strings -->
+       <if expr="toolkit_views and not is_chromeos">
+         <message name="IDS_ABOUT_BROWSER_SWITCH_DESCRIPTION_UNKNOWN_BROWSER" desc="Description shown while waiting for an alternative browser to open, when the browser name is not auto-detected">
+-          Your system administrator has configured Chromium to open an alternative browser to access <ph name="TARGET_URL_HOSTNAME">$1<ex>example.com</ex></ph>.
++          Your system administrator has configured Kestrel to open an alternative browser to access <ph name="TARGET_URL_HOSTNAME">$1<ex>example.com</ex></ph>.
+         </message>
+         <message name="IDS_ABOUT_BROWSER_SWITCH_DESCRIPTION_KNOWN_BROWSER" desc="Description shown while waiting for an alternative browser to open, when the browser name is auto-detected">
+-          Your system administrator has configured Chromium to open <ph name="ALTERNATIVE_BROWSER_NAME">$2<ex>Internet Explorer</ex></ph> to access <ph name="TARGET_URL_HOSTNAME">$1<ex>example.com</ex></ph>.
++          Your system administrator has configured Kestrel to open <ph name="ALTERNATIVE_BROWSER_NAME">$2<ex>Internet Explorer</ex></ph> to access <ph name="TARGET_URL_HOSTNAME">$1<ex>example.com</ex></ph>.
+         </message>
+       </if>
+ 
+@@ -1376,7 +1376,7 @@
+       <!-- Signin Email Confirmation tab modal dialog -->
+       <if expr="not is_chromeos">
+         <message name="IDS_SIGNIN_EMAIL_CONFIRMATION_TITLE" desc="Title of the signin email confirmation tab modal dialog.">
+-          <ph name="USER_EMAIL_ADDRESS">$1<ex>foo@9ma1l.qjz9zk</ex></ph> was previously using Chromium
++          <ph name="USER_EMAIL_ADDRESS">$1<ex>foo@9ma1l.qjz9zk</ex></ph> was previously using Kestrel
+         </message>
+       </if>
+ 
+@@ -1416,63 +1416,63 @@
+           Switch to existing Kestrel profile?
+         </message>
+         <message name="IDS_SIGNIN_DICE_WEB_INTERCEPT_SWITCH_BUBBLE_DESC_V2" desc="This string is the body text for a dialog that appears when the user is already signed in to Chromium, but they just tried to sign in to a Google service (like Gmail) with a different Google Account that already has its own Chromium profile on this device. The body text is after the 'Switch to existing Chromium profile?' string. The tone should be inviting and helpful.">
+-          You're already signed in as <ph name="USER_EMAIL_ADDRESS">$1<ex>foo@9ma1l.qjz9zk</ex></ph> in another Chromium profile
++          You're already signed in as <ph name="USER_EMAIL_ADDRESS">$1<ex>foo@9ma1l.qjz9zk</ex></ph> in another Kestrel profile
+         </message>
+         <message name="IDS_SIGNIN_DICE_WEB_INTERCEPT_SWITCH_BUBBLE_DESC_V2_SUPERVISED" desc="This string is the body text for a dialog that appears when the user is already signed in to Chromium, but they just tried to sign in to a Google service (like Gmail) with a different supervised Google Account that already has its own Chromium profile on this device. The body text is after the 'Switch to existing Chromium profile?' string. The tone should be inviting and helpful.">
+-          To stay safer online with your parent’s choices, switch to your Chromium profile where you’re already signed in as <ph name="USER_EMAIL_ADDRESS">$1<ex>foo@9ma1l.qjz9zk</ex></ph>
++          To stay safer online with your parent’s choices, switch to your Kestrel profile where you’re already signed in as <ph name="USER_EMAIL_ADDRESS">$1<ex>foo@9ma1l.qjz9zk</ex></ph>
+         </message>
+         <message name="IDS_SIGNIN_DICE_WEB_INTERCEPT_CONSUMER_BUBBLE_DESC" desc="Body of the web signin interception bubble">
+-          <ph name="EXISTING_USER">$1<ex>Elisa</ex></ph> is already signed in to this Chromium profile. To keep your browsing separate, Chromium can create your own profile for you.
++          <ph name="EXISTING_USER">$1<ex>Elisa</ex></ph> is already signed in to this Kestrel profile. To keep your browsing separate, Kestrel can create your own profile for you.
+         </message>
+         <message name="IDS_SIGNIN_DICE_WEB_INTERCEPT_CREATE_BUBBLE_DESC" desc="Body of the web signin interception bubble. It is shown when the user signs in on the web while they already have another account present in the current profile.">
+-          <ph name="EXISTING_USER">$1<ex>Elisa</ex></ph> is already signed in.  To keep your browsing separate, sign in to Chromium in your own profile as <ph name="USER_EMAIL_ADDRESS">$2<ex>foo@9ma1l.qjz9zk</ex></ph>.
++          <ph name="EXISTING_USER">$1<ex>Elisa</ex></ph> is already signed in.  To keep your browsing separate, sign in to Kestrel in your own profile as <ph name="USER_EMAIL_ADDRESS">$2<ex>foo@9ma1l.qjz9zk</ex></ph>.
+         </message>
+         <!-- Account Preview Multi-User / Profile Separation Intercept Promo Subtitles -->
+         <message name="IDS_ACCOUNT_PREVIEW_PROFILE_SEPARATION_SUBTITLE_PASSWORDS_WITH_DEVICE" desc="Body of the web signin interception bubble with account preview, informing the user they can keep accounts separate and access passwords from their other device.">
+-          <ph name="EXISTING_USER">$1<ex>Elisa</ex></ph> is already signed in. To keep your browsing separate, sign in to Chromium in your own profile as <ph name="USER_EMAIL_ADDRESS">$2<ex>bob.beckett@9ma1l.qjz9zk</ex></ph>. You’ll also get your passwords and more from <ph name="DEVICE">$3<ex>your phone</ex></ph>.
++          <ph name="EXISTING_USER">$1<ex>Elisa</ex></ph> is already signed in. To keep your browsing separate, sign in to Kestrel in your own profile as <ph name="USER_EMAIL_ADDRESS">$2<ex>bob.beckett@9ma1l.qjz9zk</ex></ph>. You’ll also get your passwords and more from <ph name="DEVICE">$3<ex>your phone</ex></ph>.
+         </message>
+         <message name="IDS_ACCOUNT_PREVIEW_PROFILE_SEPARATION_SUBTITLE_BOOKMARKS_WITH_DEVICE" desc="Body of the web signin interception bubble with account preview, informing the user they can keep accounts separate and access bookmarks from their other device.">
+-          <ph name="EXISTING_USER">$1<ex>Elisa</ex></ph> is already signed in. To keep your browsing separate, sign in to Chromium in your own profile as <ph name="USER_EMAIL_ADDRESS">$2<ex>bob.beckett@9ma1l.qjz9zk</ex></ph>. You’ll also get your bookmarks and more from <ph name="DEVICE">$3<ex>your phone</ex></ph>.
++          <ph name="EXISTING_USER">$1<ex>Elisa</ex></ph> is already signed in. To keep your browsing separate, sign in to Kestrel in your own profile as <ph name="USER_EMAIL_ADDRESS">$2<ex>bob.beckett@9ma1l.qjz9zk</ex></ph>. You’ll also get your bookmarks and more from <ph name="DEVICE">$3<ex>your phone</ex></ph>.
+         </message>
+         <message name="IDS_ACCOUNT_PREVIEW_PROFILE_SEPARATION_SUBTITLE_SAVED_INFO_WITH_DEVICE" desc="Body of the web signin interception bubble with account preview, informing the user they can keep accounts separate and access saved info (such as autofill data, addresses, and payment methods) from their other device.">
+-          <ph name="EXISTING_USER">$1<ex>Elisa</ex></ph> is already signed in. To keep your browsing separate, sign in to Chromium in your own profile as <ph name="USER_EMAIL_ADDRESS">$2<ex>bob.beckett@9ma1l.qjz9zk</ex></ph>. You’ll also get your saved info and more from <ph name="DEVICE">$3<ex>your phone</ex></ph>.
++          <ph name="EXISTING_USER">$1<ex>Elisa</ex></ph> is already signed in. To keep your browsing separate, sign in to Kestrel in your own profile as <ph name="USER_EMAIL_ADDRESS">$2<ex>bob.beckett@9ma1l.qjz9zk</ex></ph>. You’ll also get your saved info and more from <ph name="DEVICE">$3<ex>your phone</ex></ph>.
+         </message>
+         <message name="IDS_ACCOUNT_PREVIEW_PROFILE_SEPARATION_SUBTITLE_READING_LIST_WITH_DEVICE" desc="Body of the web signin interception bubble with account preview, informing the user they can keep accounts separate and access reading list from their other device.">
+-          <ph name="EXISTING_USER">$1<ex>Elisa</ex></ph> is already signed in. To keep your browsing separate, sign in to Chromium in your own profile as <ph name="USER_EMAIL_ADDRESS">$2<ex>bob.beckett@9ma1l.qjz9zk</ex></ph>. You’ll also get your reading list and more from <ph name="DEVICE">$3<ex>your phone</ex></ph>.
++          <ph name="EXISTING_USER">$1<ex>Elisa</ex></ph> is already signed in. To keep your browsing separate, sign in to Kestrel in your own profile as <ph name="USER_EMAIL_ADDRESS">$2<ex>bob.beckett@9ma1l.qjz9zk</ex></ph>. You’ll also get your reading list and more from <ph name="DEVICE">$3<ex>your phone</ex></ph>.
+         </message>
+         <message name="IDS_ACCOUNT_PREVIEW_PROFILE_SEPARATION_SUBTITLE_EXTENSIONS_WITH_DEVICE" desc="Body of the web signin interception bubble with account preview, informing the user they can keep accounts separate and access extensions from their computer. Only desktop/computer DEVICE are supported for extensions.">
+-          <ph name="EXISTING_USER">$1<ex>Elisa</ex></ph> is already signed in. To keep your browsing separate, sign in to Chromium in your own profile as <ph name="USER_EMAIL_ADDRESS">$2<ex>bob.beckett@9ma1l.qjz9zk</ex></ph>. You’ll also get your extensions and more from <ph name="DEVICE">$3<ex>your computer</ex></ph>.
++          <ph name="EXISTING_USER">$1<ex>Elisa</ex></ph> is already signed in. To keep your browsing separate, sign in to Kestrel in your own profile as <ph name="USER_EMAIL_ADDRESS">$2<ex>bob.beckett@9ma1l.qjz9zk</ex></ph>. You’ll also get your extensions and more from <ph name="DEVICE">$3<ex>your computer</ex></ph>.
+         </message>
+         <message name="IDS_ACCOUNT_PREVIEW_PROFILE_SEPARATION_SUBTITLE_PASSWORDS" desc="Body of the web signin interception bubble with account preview, informing the user they can keep accounts separate and access passwords on all their devices.">
+-          <ph name="EXISTING_USER">$1<ex>Elisa</ex></ph> is already signed in. To keep your browsing separate, sign in to Chromium in your own profile as <ph name="USER_EMAIL_ADDRESS">$2<ex>bob.beckett@9ma1l.qjz9zk</ex></ph>. You’ll also get your passwords and more on all your devices.
++          <ph name="EXISTING_USER">$1<ex>Elisa</ex></ph> is already signed in. To keep your browsing separate, sign in to Kestrel in your own profile as <ph name="USER_EMAIL_ADDRESS">$2<ex>bob.beckett@9ma1l.qjz9zk</ex></ph>. You’ll also get your passwords and more on all your devices.
+         </message>
+         <message name="IDS_ACCOUNT_PREVIEW_PROFILE_SEPARATION_SUBTITLE_BOOKMARKS" desc="Body of the web signin interception bubble with account preview, informing the user they can keep accounts separate and access bookmarks on all their devices.">
+-          <ph name="EXISTING_USER">$1<ex>Elisa</ex></ph> is already signed in. To keep your browsing separate, sign in to Chromium in your own profile as <ph name="USER_EMAIL_ADDRESS">$2<ex>bob.beckett@9ma1l.qjz9zk</ex></ph>. You’ll also get your bookmarks and more on all your devices.
++          <ph name="EXISTING_USER">$1<ex>Elisa</ex></ph> is already signed in. To keep your browsing separate, sign in to Kestrel in your own profile as <ph name="USER_EMAIL_ADDRESS">$2<ex>bob.beckett@9ma1l.qjz9zk</ex></ph>. You’ll also get your bookmarks and more on all your devices.
+         </message>
+         <message name="IDS_ACCOUNT_PREVIEW_PROFILE_SEPARATION_SUBTITLE_SAVED_INFO" desc="Body of the web signin interception bubble with account preview, informing the user they can keep accounts separate and access saved info (such as autofill data, addresses, and payment methods) on all their devices.">
+-          <ph name="EXISTING_USER">$1<ex>Elisa</ex></ph> is already signed in. To keep your browsing separate, sign in to Chromium in your own profile as <ph name="USER_EMAIL_ADDRESS">$2<ex>bob.beckett@9ma1l.qjz9zk</ex></ph>. You’ll also get your saved info and more on all your devices.
++          <ph name="EXISTING_USER">$1<ex>Elisa</ex></ph> is already signed in. To keep your browsing separate, sign in to Kestrel in your own profile as <ph name="USER_EMAIL_ADDRESS">$2<ex>bob.beckett@9ma1l.qjz9zk</ex></ph>. You’ll also get your saved info and more on all your devices.
+         </message>
+         <message name="IDS_ACCOUNT_PREVIEW_PROFILE_SEPARATION_SUBTITLE_READING_LIST" desc="Body of the web signin interception bubble with account preview, informing the user they can keep accounts separate and access reading list on all their devices.">
+-          <ph name="EXISTING_USER">$1<ex>Elisa</ex></ph> is already signed in. To keep your browsing separate, sign in to Chromium in your own profile as <ph name="USER_EMAIL_ADDRESS">$2<ex>bob.beckett@9ma1l.qjz9zk</ex></ph>. You’ll also get your reading list and more on all your devices.
++          <ph name="EXISTING_USER">$1<ex>Elisa</ex></ph> is already signed in. To keep your browsing separate, sign in to Kestrel in your own profile as <ph name="USER_EMAIL_ADDRESS">$2<ex>bob.beckett@9ma1l.qjz9zk</ex></ph>. You’ll also get your reading list and more on all your devices.
+         </message>
+         <message name="IDS_ACCOUNT_PREVIEW_PROFILE_SEPARATION_SUBTITLE_EXTENSIONS" desc="Body of the web signin interception bubble with account preview, informing the user they can keep accounts separate and access extensions on all their devices.">
+-          <ph name="EXISTING_USER">$1<ex>Elisa</ex></ph> is already signed in. To keep your browsing separate, sign in to Chromium in your own profile as <ph name="USER_EMAIL_ADDRESS">$2<ex>bob.beckett@9ma1l.qjz9zk</ex></ph>. You’ll also get your extensions and more on all your devices.
++          <ph name="EXISTING_USER">$1<ex>Elisa</ex></ph> is already signed in. To keep your browsing separate, sign in to Kestrel in your own profile as <ph name="USER_EMAIL_ADDRESS">$2<ex>bob.beckett@9ma1l.qjz9zk</ex></ph>. You’ll also get your extensions and more on all your devices.
+         </message>
+         <!-- Account Preview Settings Signin Promo Subtitles -->
+         <message name="IDS_ACCOUNT_PREVIEW_SETTINGS_PROMO_SUBTITLE_PASSWORDS_WITH_DEVICE" desc="Subtitle of a sign-in promo in Settings informing the user they can access their passwords from their other device.">
+-          To get your passwords and more from <ph name="DEVICE">$1<ex>your phone</ex></ph>, sign in to Chromium
++          To get your passwords and more from <ph name="DEVICE">$1<ex>your phone</ex></ph>, sign in to Kestrel
+         </message>
+         <message name="IDS_ACCOUNT_PREVIEW_SETTINGS_PROMO_SUBTITLE_BOOKMARKS_WITH_DEVICE" desc="Subtitle of a sign-in promo in Settings informing the user they can access their bookmarks from their other device.">
+-          To get your bookmarks and more from <ph name="DEVICE">$1<ex>your phone</ex></ph>, sign in to Chromium
++          To get your bookmarks and more from <ph name="DEVICE">$1<ex>your phone</ex></ph>, sign in to Kestrel
+         </message>
+         <message name="IDS_ACCOUNT_PREVIEW_SETTINGS_PROMO_SUBTITLE_SAVED_INFO_WITH_DEVICE" desc="Subtitle of a sign-in promo in Settings informing the user they can access their saved info (such as autofill data, addresses, and payment methods) from their other device.">
+-          To get your saved info and more from <ph name="DEVICE">$1<ex>your phone</ex></ph>, sign in to Chromium
++          To get your saved info and more from <ph name="DEVICE">$1<ex>your phone</ex></ph>, sign in to Kestrel
+         </message>
+         <message name="IDS_ACCOUNT_PREVIEW_SETTINGS_PROMO_SUBTITLE_READING_LIST_WITH_DEVICE" desc="Subtitle of a sign-in promo in Settings informing the user they can access their reading list from their other device.">
+-          To get your reading list and more from <ph name="DEVICE">$1<ex>your phone</ex></ph>, sign in to Chromium
++          To get your reading list and more from <ph name="DEVICE">$1<ex>your phone</ex></ph>, sign in to Kestrel
+         </message>
+         <message name="IDS_ACCOUNT_PREVIEW_SETTINGS_PROMO_SUBTITLE_EXTENSIONS_WITH_DEVICE" desc="Subtitle of a sign-in promo in Settings informing the user they can access their extensions from their computer. Only desktop/computer DEVICE are supported for extensions.">
+-          To get your extensions and more from <ph name="DEVICE">$1<ex>your computer</ex></ph>, sign in to Chromium
++          To get your extensions and more from <ph name="DEVICE">$1<ex>your computer</ex></ph>, sign in to Kestrel
+         </message>
+         <message name="IDS_ACCOUNT_PREVIEW_SETTINGS_PROMO_SUBTITLE_PASSWORDS" desc="Subtitle of a sign-in promo in Settings informing the user they can access their passwords on all their devices.">
+           To get your passwords and more on all your devices, sign in to Kestrel
+@@ -1502,7 +1502,7 @@
+           While you're signed in, you can use your passwords and more from your Google Account in Kestrel. To change this, go to “Your account in Kestrel”.
+         </message>
+         <message name="IDS_SIGNIN_DICE_WEB_INTERCEPT_BUBBLE_CHROME_SIGNIN_IPH_TEXT_SIGNIN_REMINDER_SCREENREADER" desc="This string is the accessibility text of a reminder message, which is intended to help users understand that they have been signed in to Chrome.">
+-          While you're signed in, you can use your passwords and more from your Google Account in Chromium. <ph name="SHORTCUT">$1<ex>CTRL+SHIFT+M</ex></ph> can change your Google services settings.
++          While you're signed in, you can use your passwords and more from your Google Account in Kestrel. <ph name="SHORTCUT">$1<ex>CTRL+SHIFT+M</ex></ph> can change your Google services settings.
+         </message>
+         <message name="IDS_CHROME_SIGNOUT_CONFIRMATION_PROMPT_NO_UNSYNCED_TITLE" desc="This is the title of a confirmation dialog and asks the user to confirm that they want to sign out of Chromium. It appears when the user opens the Chromium Profile Menu and chooses 'Sign out of Chromium'. This title is before the 'Your passwords and other Chromium data are saved to your Google Account, and will be removed from this device. To use them in the future, sign back in to Chromium.' string. The tone should be straightforward.">
+           Sign out of Kestrel?
+@@ -1530,7 +1530,7 @@
+               other {Some of your Kestrel data hasn't been saved in your Google Account yet. Try waiting a few minutes before signing out. If you sign out now, this data ({count} items) will be deleted.}}
+         </message>
+         <message name="IDS_CLOSE_WARNING_FOR_CLEAR_COOKIES_ON_EXIT_TEXT" desc="Body of a notice displayed when closing the last Chrome window, to inform the user about a change in the way the 'Clear cookie on exit' setting works.">
+-          You’ll be signed out of most sites when you close all Chromium windows, except your Google Account if you’re signed in to Chromium. To let sites remember you, <ph name="SETTINGS_LINK">$1<ex>go to settings</ex></ph>.
++          You’ll be signed out of most sites when you close all Kestrel windows, except your Google Account if you’re signed in to Kestrel. To let sites remember you, <ph name="SETTINGS_LINK">$1<ex>go to settings</ex></ph>.
+         </message>
+         <message name="IDS_AVATAR_BUTTON_INTERCEPT_BUBBLE_CHROME_SIGNIN_ACCESSIBILITY_LABEL"
+           desc="Accessibility label (read by the accessibility tools) of the avatar button when the Kestrel Signin bubble is shown. The text implies that the expanded bubble underneath the button is closable by clicking on the button. The actual text is 'Sign in to Kestrel?' with a bubble shown under it.">
+@@ -1551,7 +1551,7 @@
+       </if>
+ 
+       <message name="IDS_SYNC_PASSPHRASE_DIALOG_FOOTER" desc="Dialog footer of the passphrase dialog.">
+-        If you forgot your passphrase or want to change this setting, <ph name="SETTINGS_LINK">$1<ex>clear</ex></ph> the Chromium data in your account
++        If you forgot your passphrase or want to change this setting, <ph name="SETTINGS_LINK">$1<ex>clear</ex></ph> the Kestrel data in your account
+       </message>
+       <message name="IDS_SYNC_PASSPHRASE_DIALOG_FOOTER_LINK_ACC" desc="Accessibility label for the link in the footer of the sync passphrase dialog">
+         Clear the Kestrel data in your account
+@@ -1650,7 +1650,7 @@
+         Sign in to Kestrel on your phone
+       </message>
+       <message name="IDS_QR_CODE_BUBBLE_SIGNIN_ON_PHONE_QR_CODE_ALT_TEXT" desc="Accessibility label for the QR code image in the cross-device sign-in promo bubble.">
+-        QR code to sign in to Chromium as <ph name="USER_NAME">$1<ex>Elisa Beckett</ex></ph>
++        QR code to sign in to Kestrel as <ph name="USER_NAME">$1<ex>Elisa Beckett</ex></ph>
+       </message>
+ 
+       <!-- App list -->
+@@ -1710,7 +1710,7 @@
+       <!-- ProcessSingleton -->
+       <if expr="is_posix">
+         <message name="IDS_PROFILE_IN_USE_POSIX" desc="Message shown when the browser cannot start because the profile is in use on a different host.">
+-          The profile appears to be in use by another Chromium process (<ph name="PROCESS_ID">$1<ex>12345</ex></ph>) on another computer (<ph name="HOST_NAME">$2<ex>example.com</ex></ph>). Chromium has locked the profile so that it doesn't get corrupted. If you are sure no other processes are using this profile, you can unlock the profile and relaunch Chromium.
++          The profile appears to be in use by another Kestrel process (<ph name="PROCESS_ID">$1<ex>12345</ex></ph>) on another computer (<ph name="HOST_NAME">$2<ex>example.com</ex></ph>). Kestrel has locked the profile so that it doesn't get corrupted. If you are sure no other processes are using this profile, you can unlock the profile and relaunch Kestrel.
+         </message>
+       </if>
+ 
+@@ -1725,7 +1725,7 @@
+       <if expr="not is_android and not is_chromeos">
+         <!-- User pod remove sync warning text -->
+         <message name="IDS_LOGIN_POD_USER_REMOVE_WARNING_SYNC" desc="Main text shown as a warning when attempting to remove an user.">
+-          This person's browsing data will be deleted from this device. To recover the data, sign in to Chromium as <ph name="USER_EMAIL">$2<ex>foo@example.com</ex></ph>.
++          This person's browsing data will be deleted from this device. To recover the data, sign in to Kestrel as <ph name="USER_EMAIL">$2<ex>foo@example.com</ex></ph>.
+         </message>
+ 
+         <!-- Tutorial -->
+@@ -1943,16 +1943,16 @@
+         Update Kestrel
+       </message>
+       <message name="IDS_SYNC_ERROR_PASSPHRASE_USER_MENU_ERROR_DESCRIPTION" desc="Error description of the sync/signin error header of desktop user menu.">
+-        Enter your passphrase to use and save Chromium data in your account, <ph name="ACCOUNT_EMAIL">$1<ex>elisa.beckett@9ma1l.qjz9zk</ex></ph>
++        Enter your passphrase to use and save Kestrel data in your account, <ph name="ACCOUNT_EMAIL">$1<ex>elisa.beckett@9ma1l.qjz9zk</ex></ph>
+       </message>
+       <message name="IDS_SYNC_ERROR_TRUSTED_VAULT_USER_MENU_ERROR_DESCRIPTION" desc="Error description of the sync/signin error header of desktop user menu.">
+-        Verify it's you to use and save Chromium data in your account, <ph name="ACCOUNT_EMAIL">$1<ex>elisa.beckett@9ma1l.qjz9zk</ex></ph>
++        Verify it's you to use and save Kestrel data in your account, <ph name="ACCOUNT_EMAIL">$1<ex>elisa.beckett@9ma1l.qjz9zk</ex></ph>
+       </message>
+        <message name="IDS_SYNC_ERROR_UPGRADE_CLIENT_USER_MENU_TITLE" desc="Error message to resolve sync protocol error for out-of-date client.">
+         To use and save Kestrel data in your Google Account, update Kestrel
+       </message>
+       <message name="IDS_SYNC_ERROR_UPGRADE_CLIENT_USER_MENU_ERROR_DESCRIPTION" desc="Error message to resolve sync protocol error for out-of-date client.">
+-        Update Chromium to keeping using the Chromium data in your Google Account, <ph name="ACCOUNT_EMAIL">$1<ex>elisa.beckett@9ma1l.qjz9zk</ex></ph>
++        Update Kestrel to keeping using the Kestrel data in your Google Account, <ph name="ACCOUNT_EMAIL">$1<ex>elisa.beckett@9ma1l.qjz9zk</ex></ph>
+       </message>
+ 
+       <!-- Sync errors. -->
+@@ -1983,7 +1983,7 @@
+ 
+       <!-- Critical Notification bubble -->
+       <message name="IDS_CRITICAL_NOTIFICATION_TITLE" desc="The title for a bubble that appears when there is a critical update and Chromium must restart to install it. It counts down a timer and then Chromium automatically restarts.">
+-        Chromium will restart in <ph name="REMAINING_TIME">$1<ex>1 minute, 7 seconds</ex></ph>
++        Kestrel will restart in <ph name="REMAINING_TIME">$1<ex>1 minute, 7 seconds</ex></ph>
+       </message>
+       <message name="IDS_CRITICAL_NOTIFICATION_TITLE_ALTERNATE" desc="The title for a bubble that appears when there is a critical update and Chromium must restart to install it. The title was previously countng down to an automatic restart and now it has finished. Will only be seen if a web page stops the shutdown process.">
+         Please restart Kestrel now
+@@ -2664,7 +2664,7 @@
+             Update Kestrel to stay secure
+           </message>
+           <message name="IDS_RELAUNCH_RECOMMENDED_BODY_SCHEDULE" desc="The first body paragraph for the scheduled restart reminder bubble dialog.">
+-            An <ph name="IMPORTANT_UPDATE">$1<ex>important security update</ex></ph> is ready. You can relaunch now, or set Chromium to update the next time your screen remains on and unused for <ph name="IDLE_DURATION">$2<ex>5 minutes</ex></ph>.
++            An <ph name="IMPORTANT_UPDATE">$1<ex>important security update</ex></ph> is ready. You can relaunch now, or set Kestrel to update the next time your screen remains on and unused for <ph name="IDLE_DURATION">$2<ex>5 minutes</ex></ph>.
+           </message>
+           <message name="IDS_RELAUNCH_REQUIRED_TITLE_DAYS" desc="The title of a dialog that tells users the browser must be relaunched within two or more days.">
+             {0, plural,
+@@ -2742,13 +2742,13 @@
+           Kestrel was automatically closed
+         </message>
+         <message name="IDS_IDLE_BUBBLE_BODY_CLOSE_AND_CLEAR" desc="Body of a bubble that informs the user that Chromium closed + cleared data automatically, because they were away from the computer for X minutes.">
+-          Your organization closes Chromium when it isn't used for <ph name="TIMEOUT_DURATION">$1<ex>30 minutes</ex></ph>. Browsing data was deleted. This could include history, autofill, and downloads.
++          Your organization closes Kestrel when it isn't used for <ph name="TIMEOUT_DURATION">$1<ex>30 minutes</ex></ph>. Browsing data was deleted. This could include history, autofill, and downloads.
+         </message>
+         <message name="IDS_IDLE_BUBBLE_BODY_CLEAR" desc="Body of a bubble that informs the user that Chromium cleared data automatically, because they were away from the computer for X minutes.">
+-          Your organization deletes Chromium data when it isn't used for <ph name="TIMEOUT_DURATION">$1<ex>30 minutes</ex></ph>. This could include history, autofill, and downloads.
++          Your organization deletes Kestrel data when it isn't used for <ph name="TIMEOUT_DURATION">$1<ex>30 minutes</ex></ph>. This could include history, autofill, and downloads.
+         </message>
+         <message name="IDS_IDLE_BUBBLE_BODY_CLOSE" desc="Body of a bubble that informs the user that Chromium closed automatically, because they were away from the computer for X minutes.">
+-          Your organization closes Chromium when it isn't used for <ph name="TIMEOUT_DURATION">$1<ex>30 minutes</ex></ph>.
++          Your organization closes Kestrel when it isn't used for <ph name="TIMEOUT_DURATION">$1<ex>30 minutes</ex></ph>.
+         </message>
+       </if>
+       <!-- Idle timeout dialog. -->
+@@ -2885,7 +2885,7 @@
+           You can switch between Kestrel profiles here
+         </message>
+         <message name="IDS_PROFILE_SWITCH_PROMO_SCREENREADER" desc="Text announced by screenreaders to explain how to switch between profiles.">
+-          <ph name="SHORTCUT">$1<ex>CTRL+SHIFT+M</ex></ph> can switch between Chromium profiles
++          <ph name="SHORTCUT">$1<ex>CTRL+SHIFT+M</ex></ph> can switch between Kestrel profiles
+         </message>
+         <message name="IDS_PASSWORD_MANAGER_IPH_BODY_WEB_APP_PROFILE_SWITCH" desc="Body of the in Product Help for profile switching shown in the password manager web app.">
+           You can switch to see passwords from another Kestrel profile
+@@ -2942,7 +2942,7 @@
+ 
+       <!-- Device Chooser Prompt -->
+       <message name="IDS_SERIAL_DEVICE_CHOOSER_AUTHORIZE_BLUETOOTH" desc="Text shown in the Web Serial Chooser when browser does not have Bluetooth permission. The '&#10;' is a newline character to force the desired line wrapping.">
+-        Chromium needs Bluetooth access to explore &#10; Bluetooth devices. <ph name="IDS_SERIAL_DEVICE_CHOOSER_AUTHORIZE_BLUETOOTH_LINK">$1<ex>Open Preferences</ex></ph>
++        Kestrel needs Bluetooth access to explore &#10; Bluetooth devices. <ph name="IDS_SERIAL_DEVICE_CHOOSER_AUTHORIZE_BLUETOOTH_LINK">$1<ex>Open Preferences</ex></ph>
+       </message>
+ 
+       <!-- Tailored Security -->
+@@ -3006,7 +3006,7 @@
+           Installation failed. Please try again.
+         </message>
+         <message name="IDS_INSTALLER_DISPLAY_NAME" desc="Name for the updater metainstaller.">
+-          <ph name="COMPANY_NAME">$1<ex>Chromium</ex></ph> Installer
++          <ph name="COMPANY_NAME">$1<ex>Kestrel</ex></ph> Installer
+         </message>
+         <message name="IDS_CLOSE_BUTTON" desc="Close button tooltip">
+           Close
+@@ -3045,13 +3045,13 @@
+           Canceling...
+         </message>
+         <message name="IDS_TEXT_RESTART_BROWSER" desc="For when a browser must be restarted to complete the installation.">
+-          Thanks for installing. You must restart your browser before using <ph name="BUNDLE_NAME">$1<ex>Chromium</ex></ph>.
++          Thanks for installing. You must restart your browser before using <ph name="BUNDLE_NAME">$1<ex>Kestrel</ex></ph>.
+         </message>
+         <message name="IDS_TEXT_RESTART_ALL_BROWSERS" desc="For when all browsers must be restarted to complete the installation.">
+-          Thanks for installing. You must restart all your browsers before using <ph name="BUNDLE_NAME">$1<ex>Chromium</ex></ph>.
++          Thanks for installing. You must restart all your browsers before using <ph name="BUNDLE_NAME">$1<ex>Kestrel</ex></ph>.
+         </message>
+         <message name="IDS_TEXT_RESTART_COMPUTER" desc="For when the computer must be restarted to complete the installation.">
+-          Thanks for installing. You must restart your computer before using <ph name="BUNDLE_NAME">$1<ex>Chromium</ex></ph>.
++          Thanks for installing. You must restart your computer before using <ph name="BUNDLE_NAME">$1<ex>Kestrel</ex></ph>.
+         </message>
+         <message name="IDS_UPDATER_CLOSE" desc="For close button on the UI post install completion.">
+           Close
+@@ -3289,7 +3289,7 @@
+ 
+       <!-- Delete Browsing Data -->
+       <message name="IDS_SETTINGS_CLEAR_BROWSING_DATA_SIGNED_IN" desc="Description in the footer of the Delete Browsing Data dialog when the user is signed.">
+-        To delete browsing data from this device only, while keeping it in your Google Account, <ph name="BEGIN_LINK">&lt;a href="#" target=&quot;_blank&quot;&gt;</ph>sign out of Chromium<ph name="END_LINK">&lt;/a&gt;</ph>.
++        To delete browsing data from this device only, while keeping it in your Google Account, <ph name="BEGIN_LINK">&lt;a href="#" target=&quot;_blank&quot;&gt;</ph>sign out of Kestrel<ph name="END_LINK">&lt;/a&gt;</ph>.
+       </message>
+ 
+       <!-- New Create Shortcut View Strings -->
+@@ -3476,7 +3476,7 @@
+         Ask about content outside of Kestrel, like other apps or files
+       </message>
+       <message name="IDS_LOOMNIBOX_FRE_TO_SEARCH_OR_CUSTOMIZE" desc="Text in the Stage 2 FRE chin following the shortcut dropdown indicating it searches with Chromium or customizes in settings.">
+-        to search with Chromium or customize in <ph name="BEGIN_LINK">&lt;a href="#" class="settings-link"&gt;</ph>Settings<ph name="END_LINK">&lt;/a&gt;</ph>
++        to search with Kestrel or customize in <ph name="BEGIN_LINK">&lt;a href="#" class="settings-link"&gt;</ph>Settings<ph name="END_LINK">&lt;/a&gt;</ph>
+       </message>
+       <message name="IDS_LOOMNIBOX_FRE_REMINDER_TO_SEARCH" desc="Label in the Stage 3 reminder FRE chin showing the active shortcut to search with Chromium.">
+         to search with Kestrel.
+@@ -3499,24 +3499,24 @@
+ 
+       <!-- Profile Picker Glic version-->
+       <message name="IDS_PROFILE_PICKER_MAIN_VIEW_TITLE_GLIC" desc="Profile picker main view title for Glic version. 'Glic' has a special styling." translateable="false">
+-        Choose a Chromium profile to use with <ph name="START_GLIC_STYLING">&lt;span class="glic-brand-style"&gt;</ph>Glic<ph name="END_GLIC_STYLING">&lt;/span&gt;</ph>
++        Choose a Kestrel profile to use with <ph name="START_GLIC_STYLING">&lt;span class="glic-brand-style"&gt;</ph>Glic<ph name="END_GLIC_STYLING">&lt;/span&gt;</ph>
+       </message>
+       <message name="IDS_PROFILE_PICKER_MAIN_VIEW_TITLE_GLIC_NO_PROFILE" desc="Profile picker main view title for Glic version when no profiles are eligible to use Glic. 'Glic' has a special styling." translateable="false">
+-        Sign into Chromium with your Google Account to use <ph name="START_GLIC_STYLING">&lt;span class="glic-brand-style"&gt;</ph>Glic<ph name="END_GLIC_STYLING">&lt;/span&gt;</ph>
++        Sign into Kestrel with your Google Account to use <ph name="START_GLIC_STYLING">&lt;span class="glic-brand-style"&gt;</ph>Glic<ph name="END_GLIC_STYLING">&lt;/span&gt;</ph>
+       </message>
+       <message name="IDS_PROFILE_PICKER_MAIN_VIEW_SUBTITLE_GLIC" desc="Profile picker main view subtitle for Glic version." translateable="false">
+         Select the Kestrel profile linked to your Google Account to personalize your Glic experience
+       </message>
+       <message name="IDS_PROFILE_PICKER_MAIN_VIEW_SUBTITLE_GLIC_NO_PROFILE" desc="Profile picker main view subtitle for Glic version. This version is shown when no profiles are eligibile to use Glic." translateable="false">
+-        To add a new profile and use it with Glic, sign in to Chromium with a Google Account. <ph name="BEGIN_LINK">&lt;a class="learn-more-link" href="#" target=&quot;_blank&quot;&gt;</ph>Learn how to sign in to Chromium<ph name="END_LINK">&lt;/a&gt;</ph>
++        To add a new profile and use it with Glic, sign in to Kestrel with a Google Account. <ph name="BEGIN_LINK">&lt;a class="learn-more-link" href="#" target=&quot;_blank&quot;&gt;</ph>Learn how to sign in to Kestrel<ph name="END_LINK">&lt;/a&gt;</ph>
+       </message>
+       <message name="IDS_PROFILE_PICKER_ADD_PROFILE_HELPER_GLIC" desc="Text shown in the Profile Picker Glic version below the profiles list container that helps the user to create a new profile and sign in to it." translateable="false">
+-        To add a new profile and use it with Glic, sign in to Chromium with a different Google Account. <ph name="BEGIN_LINK">&lt;a class="learn-more-link" href="#" target=&quot;_blank&quot;&gt;</ph>Learn how to add a new Chromium profile<ph name="END_LINK">&lt;/a&gt;</ph>
++        To add a new profile and use it with Glic, sign in to Kestrel with a different Google Account. <ph name="BEGIN_LINK">&lt;a class="learn-more-link" href="#" target=&quot;_blank&quot;&gt;</ph>Learn how to add a new Kestrel profile<ph name="END_LINK">&lt;/a&gt;</ph>
+       </message>
+ 
+       <!-- Glic button and tab strip context menu -->
+       <message name="IDS_GLIC_CONTEXTUAL_CUEING_ANNOUNCEMENT" desc="Polite announcement that happens when a contextual nudge is shown next to the Glic button." translateable="false">
+-        To open Gemini in Chromium, press <ph name="GLOBAL_HOTKEY">$1<ex>⌘+G</ex></ph>
++        To open Gemini in Kestrel, press <ph name="GLOBAL_HOTKEY">$1<ex>⌘+G</ex></ph>
+       </message>
+ 
+       <!-- UNO Promo strings for extensions -->
+@@ -3606,10 +3606,10 @@
+           QR code to download Kestrel browser on mobile devices
+         </message>
+         <message name="IDS_IOS_DESKTOP_PROMO_REMINDER_CONFIRMATION" desc="Body text of the promo bubble that appears after uses choose to be reminded of the feature on their iOS device. The placeholder will be replaced by the name of the feature.">
+-          You'll see a prompt to try <ph name="FEATURE_NAME">$1<ex>Google Lens</ex></ph> next time you open Chromium iOS.
++          You'll see a prompt to try <ph name="FEATURE_NAME">$1<ex>Google Lens</ex></ph> next time you open Kestrel iOS.
+         </message>
+         <message name="IDS_IOS_DESKTOP_PASSWORD_PROMO_REMINDER_CONFIRMATION" desc="Body text of the promo bubble that appears after uses choose to be reminded of the Password Manager on their iOS device.">
+-          Next time you open Chromium on your <ph name="DEVICE_TYPE">$1<ex>iPhone</ex></ph>, you'll see a prompt to use Google Password Manager.
++          Next time you open Kestrel on your <ph name="DEVICE_TYPE">$1<ex>iPhone</ex></ph>, you'll see a prompt to use Google Password Manager.
+         </message>
+         <message name="IDS_IOS_DESKTOP_LENS_PROMO_BUBBLE_DESCRIPTION_REMINDER" desc="The description for the iOS desktop Lens promo bubble.">
+           Shop, translate and identify what you see with your camera on the Kestrel iOS app
+@@ -3627,13 +3627,13 @@
+           Get price tracking alerts with Kestrel on your phone
+         </message>
+         <message name="IDS_IOS_DESKTOP_PRICE_TRACKING_REMINDER_CONFIRMATION" desc="Body text of the promo bubble that appears after the user chooses to be reminded of price tracking on their iOS device.">
+-          Next time you open Chromium on your <ph name="DEVICE_TYPE">$1<ex>iPhone</ex></ph>, you’ll see a prompt to enable price tracking alerts.
++          Next time you open Kestrel on your <ph name="DEVICE_TYPE">$1<ex>iPhone</ex></ph>, you’ll see a prompt to enable price tracking alerts.
+         </message>
+         <message name="IDS_IOS_DESKTOP_TAB_GROUPS_PROMO_BUBBLE_DESCRIPTION_QR" desc="The description for the iOS desktop Tab Groups promo bubble with a QR code.">
+           Download Kestrel on your phone to open or create new tab groups on the go.
+         </message>
+         <message name="IDS_IOS_DESKTOP_TAB_GROUPS_REMINDER_CONFIRMATION" desc="Body text of the promo bubble that appears after the user chooses to be reminded of tab groups on their iOS device.">
+-          Next time you open Chromium on your <ph name="DEVICE_TYPE">$1<ex>iPhone</ex></ph>, you’ll see a prompt to use tab groups.
++          Next time you open Kestrel on your <ph name="DEVICE_TYPE">$1<ex>iPhone</ex></ph>, you’ll see a prompt to use tab groups.
+         </message>
+         <message name="IDS_IOS_DESKTOP_AI_PROMO_BUBBLE_DESCRIPTION_QR" desc="The description for the iOS desktop AI promo bubble with a QR code.">
+           Scan the QR code with your phone to download Kestrel and sign in to your Google Account.
+@@ -3645,7 +3645,7 @@
+           Take your favorite Google AI tools on the go with Kestrel on iOS.
+         </message>
+         <message name="IDS_IOS_DESKTOP_AI_PROMO_BUBBLE_TITLE_REMINDER" desc="The title for the iOS desktop AI promo bubble with a reminder.">
+-          Get the power of AI when you use the Chromium app on your <ph name="DEVICE_TYPE">$1<ex>iPhone</ex></ph>
++          Get the power of AI when you use the Kestrel app on your <ph name="DEVICE_TYPE">$1<ex>iPhone</ex></ph>
+         </message>
+         <message name="IDS_IOS_DESKTOP_AI_PROMO_NOTIFICATION_BODY" desc="The body for the iOS desktop AI promo notification.">
+           Use the Kestrel app to take the best AI tools on the go
+@@ -3660,10 +3660,10 @@
+           Seamlessly work with your favorite apps like Google Drive and YouTube on the go with Kestrel.
+         </message>
+         <message name="IDS_IOS_DESKTOP_BEST_OF_GOOGLE_PROMO_BUBBLE_TITLE_REMINDER" desc="The title for the iOS desktop Best of Google promo bubble with a reminder.">
+-          Get the best of Google with the Chromium app on your <ph name="DEVICE_TYPE">$1<ex>iPhone</ex></ph>
++          Get the best of Google with the Kestrel app on your <ph name="DEVICE_TYPE">$1<ex>iPhone</ex></ph>
+         </message>
+         <message name="IDS_IOS_DESKTOP_BEST_OF_GOOGLE_PROMO_NOTIFICATION_BODY" desc="The body for the iOS desktop Best of Google promo notification.">
+-          Access all of your Google favorites with Chromium on your <ph name="DEVICE_TYPE">$1<ex>iPhone</ex></ph>
++          Access all of your Google favorites with Kestrel on your <ph name="DEVICE_TYPE">$1<ex>iPhone</ex></ph>
+         </message>
+         <message name="IDS_IOS_DESKTOP_BEST_OF_GOOGLE_PROMO_NOTIFICATION_TITLE" desc="The title for the iOS desktop Best of Google promo notification.">
+           Reminder: The best of Google in your pocket
+@@ -3678,7 +3678,7 @@
+           Get Google’s best safety features on the go with Kestrel.
+         </message>
+         <message name="IDS_IOS_DESKTOP_SAFETY_PROMO_BUBBLE_TITLE_REMINDER" desc="The title for the iOS desktop Safety promo bubble with a reminder.">
+-          Take the safety of Google on the go with the Chromium app on your <ph name="DEVICE_TYPE">$1<ex>iPhone</ex></ph>
++          Take the safety of Google on the go with the Kestrel app on your <ph name="DEVICE_TYPE">$1<ex>iPhone</ex></ph>
+         </message>
+         <message name="IDS_IOS_DESKTOP_SAFETY_PROMO_NOTIFICATION_BODY" desc="The body for the iOS desktop Safety promo notification.">
+           Use the Kestrel app to take the safety of Google on the go
+@@ -3696,7 +3696,7 @@
+           Discover products with your camera, track price drops and more on the go with Kestrel on iOS.
+         </message>
+         <message name="IDS_IOS_DESKTOP_SHOPPING_PROMO_BUBBLE_TITLE_REMINDER" desc="The title for the iOS desktop Shopping promo bubble with a reminder.">
+-          Get more out of online shopping when you use the Chromium app on your <ph name="DEVICE_TYPE">$1<ex>iPhone</ex></ph>
++          Get more out of online shopping when you use the Kestrel app on your <ph name="DEVICE_TYPE">$1<ex>iPhone</ex></ph>
+         </message>
+         <message name="IDS_IOS_DESKTOP_SHOPPING_PROMO_NOTIFICATION_BODY" desc="The body for the iOS desktop Shopping promo notification.">
+           Use the Kestrel app to take the best shopping tools on the go
+@@ -3711,7 +3711,7 @@
+           Pick up right where you left off with Kestrel on iOS.
+         </message>
+         <message name="IDS_IOS_DESKTOP_YOUR_CHROME_PROMO_BUBBLE_TITLE_REMINDER" desc="The title for the iOS desktop Your Chrome promo bubble with a reminder.">
+-          Take your passwords, tabs and more on the go with the Chromium app on your <ph name="DEVICE_TYPE">$1<ex>iPhone</ex></ph>
++          Take your passwords, tabs and more on the go with the Kestrel app on your <ph name="DEVICE_TYPE">$1<ex>iPhone</ex></ph>
+         </message>
+         <message name="IDS_IOS_DESKTOP_YOUR_CHROME_PROMO_NOTIFICATION_BODY" desc="The body for the iOS desktop Your Chrome promo notification.">
+           Use the Kestrel app to keep browsing on the go
+@@ -3725,7 +3725,7 @@
+       </message>
+       <message name="IDS_DEFAULT_SEARCH_ENGINE_RESET_NOTIFICATION_BODY"
+          desc="Body text of the notification shown when Kestrel resets the default search engine, explaining that a change from outside Kestrel was detected.">
+-        Your search engine was changed from outside of Chromium. To protect you, Chromium reset it to its original default. <ph name="LEARN_MORE_LINK">$1<ex>Learn more</ex></ph>
++        Your search engine was changed from outside of Kestrel. To protect you, Kestrel reset it to its original default. <ph name="LEARN_MORE_LINK">$1<ex>Learn more</ex></ph>
+       </message>
+       <message name="IDS_DEFAULT_SEARCH_ENGINE_RESET_NOTIFICATION_GOT_IT_BUTTON"
+          desc="Label for the 'Got it' button in the default search engine reset notification, which dismisses the UI.">
+--- a/components/components_chromium_strings.grd
++++ b/components/components_chromium_strings.grd
+@@ -276,16 +276,16 @@
+       </message>
+ 
+       <message name="IDS_VERSION_UI_LICENSE" desc="The label below the copyright message, containing the URLs.">
+-        Chromium is made possible by the <ph name="BEGIN_LINK_CHROMIUM">&lt;a target="_blank" href="$1" aria-description="$3"&gt;</ph>Chromium<ph name="END_LINK_CHROMIUM">&lt;/a&gt;</ph> open source project and other <ph name="BEGIN_LINK_OSS">&lt;a target="_blank" href="$2" aria-description="$3"&gt;</ph>open source software<ph name="END_LINK_OSS">&lt;/a&gt;</ph>.
++        Kestrel is made possible by the <ph name="BEGIN_LINK_CHROMIUM">&lt;a target="_blank" href="$1" aria-description="$3"&gt;</ph>Kestrel<ph name="END_LINK_CHROMIUM">&lt;/a&gt;</ph> open source project and other <ph name="BEGIN_LINK_OSS">&lt;a target="_blank" href="$2" aria-description="$3"&gt;</ph>open source software<ph name="END_LINK_OSS">&lt;/a&gt;</ph>.
+       </message>
+ 
+       <if expr="is_chromeos">
+         <message name="IDS_VERSION_UI_LICENSE_CHROMIUM" desc="The label below the copyright message, containing the link to the Chromium project.">
+-          Chromium is made possible by the <ph name="BEGIN_LINK_CHROMIUM">&lt;a target="_blank" href="$1"&gt;</ph>Chromium<ph name="END_LINK_CHROMIUM">&lt;/a&gt;</ph> open source project.
++          Kestrel is made possible by the <ph name="BEGIN_LINK_CHROMIUM">&lt;a target="_blank" href="$1"&gt;</ph>Kestrel<ph name="END_LINK_CHROMIUM">&lt;/a&gt;</ph> open source project.
+         </message>
+ 
+         <message name="IDS_VERSION_UI_LICENSE_OTHER" desc="The label below the copyright message, containing the link to other open source software.">
+-          Chromium is also made possible by other <ph name="BEGIN_LINK_OSS">&lt;a href='#'&gt;</ph>open source software<ph name="END_LINK_OSS">&lt;/a&gt;</ph>.
++          Kestrel is also made possible by other <ph name="BEGIN_LINK_OSS">&lt;a href='#'&gt;</ph>open source software<ph name="END_LINK_OSS">&lt;/a&gt;</ph>.
+         </message>
+       </if>
+ 
+@@ -310,12 +310,12 @@
+ 
+       <!-- Device Chooser Prompt -->
+       <message name="IDS_BLUETOOTH_DEVICE_CHOOSER_AUTHORIZE_BLUETOOTH" desc="Text shown in the Chooser when browser does not have Bluetooth permission. The '&#10;' is a newline character to force the desired line wrapping.">
+-        Chromium needs Bluetooth access to continue &#10; pairing. <ph name="IDS_BLUETOOTH_DEVICE_CHOOSER_AUTHORIZE_BLUETOOTH_LINK">$1<ex>Open Preferences</ex></ph>
++        Kestrel needs Bluetooth access to continue &#10; pairing. <ph name="IDS_BLUETOOTH_DEVICE_CHOOSER_AUTHORIZE_BLUETOOTH_LINK">$1<ex>Open Preferences</ex></ph>
+       </message>
+ 
+       <!-- Internal debug pages disabled interstitial. -->
+       <message name="IDS_INTERNAL_DEBUG_PAGES_DISABLED_BODY" desc="This is the text, with a link, that appears below the heading for the page that appears when the user attempts to load an internal developer debugging page when such pages are disabled by a pref. It instructs the user on how to enable the pref if they wish.">
+-        These pages are intended for use by Chromium developers, and may not be actively maintained or tested. To enable them, navigate to <ph name="BEGIN_LINK">&lt;a href="$1"&gt;</ph>chrome://chrome-urls<ph name="LINK_END">&lt;/a&gt;</ph>, click the button to enable debug pages, and then navigate to this page again.
++        These pages are intended for use by Kestrel developers, and may not be actively maintained or tested. To enable them, navigate to <ph name="BEGIN_LINK">&lt;a href="$1"&gt;</ph>chrome://chrome-urls<ph name="LINK_END">&lt;/a&gt;</ph>, click the button to enable debug pages, and then navigate to this page again.
+       </message>
+ 
+       <!-- Desktop-to-Mobile Promo Notifications -->

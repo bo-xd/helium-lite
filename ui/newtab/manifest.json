@@ -1,11 +1,16 @@
 {
   "manifest_version": 3,
   "name": "Kestrel New Tab",
-  "version": "1.0.0",
-  "description": "Ultra-low-RAM dark start page for Kestrel.",
+  "version": "1.2.0",
+  "description": "Minimalist dark start page for Kestrel.",
   "chrome_url_overrides": {
     "newtab": "newtab.html"
   },
   "options_page": "settings.html",
-  "permissions": ["storage", "nativeMessaging"]
+  "permissions": ["storage", "nativeMessaging"],
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
 }

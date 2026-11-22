@@ -2,7 +2,8 @@
 
 (() => {
   const STYLE_ID = "kestrel-shield-cosmetic";
-  const AD_SELECTORS = [
+
+  const CORE_SELECTORS = [
     "ins.adsbygoogle",
     "iframe[id^='google_ads_iframe']",
     "iframe[src*='doubleclick.net']",
@@ -21,10 +22,12 @@
     ".sponsored-content",
     "#taboola-below-article-thumbnails",
     ".trc_rbox_outer",
-    ".OUTBRAIN"
+    ".OUTBRAIN",
+    "#onetrust-consent-sdk",
+    "#CybotCookiebotDialog"
   ];
 
-  const CSS_TEXT = `${AD_SELECTORS.join(",\n")} {\n  display: none !important;\n  visibility: hidden !important;\n}`;
+  let cosmeticData = null;
 
   function normalizeHost(host) {
     return (host || "").toLowerCase().replace(/^www\./, "");
@@ -38,17 +41,51 @@
     });
   }
 
-  function applyCosmetic(shouldHide) {
-    const existing = document.getElementById(STYLE_ID);
+  function buildCssForHost(host) {
+    const selectors = new Set(CORE_SELECTORS);
+    if (cosmeticData) {
+      if (Array.isArray(cosmeticData.global)) {
+        for (const s of cosmeticData.global) selectors.add(s);
+      }
+      if (host && cosmeticData.domains) {
+        const parts = host.split(".");
+        for (let i = 0; i < parts.length - 1; i++) {
+          const candidate = parts.slice(i).join(".");
+          const domainSels = cosmeticData.domains[candidate];
+          if (Array.isArray(domainSels)) {
+            for (const s of domainSels) selectors.add(s);
+          }
+        }
+      }
+    }
+    return `${Array.from(selectors).join(",\n")} {\n  display: none !important;\n  visibility: hidden !important;\n}`;
+  }
+
+  function applyCosmetic(shouldHide, host) {
+    let style = document.getElementById(STYLE_ID);
     if (!shouldHide) {
-      if (existing) existing.remove();
+      if (style) style.remove();
       return;
     }
-    if (existing) return;
-    const style = document.createElement("style");
-    style.id = STYLE_ID;
-    style.textContent = CSS_TEXT;
-    (document.head || document.documentElement).appendChild(style);
+    if (!style) {
+      style = document.createElement("style");
+      style.id = STYLE_ID;
+      (document.head || document.documentElement).appendChild(style);
+    }
+    style.textContent = buildCssForHost(host);
+  }
+
+  async function ensureCosmeticRules() {
+    if (cosmeticData) return;
+    try {
+      const url = chrome.runtime.getURL("rules/cosmetic.json");
+      const resp = await fetch(url);
+      if (resp.ok) {
+        cosmeticData = await resp.json();
+      }
+    } catch {
+      // Fallback to CORE_SELECTORS
+    }
   }
 
   function update() {
@@ -61,18 +98,26 @@
         blockingLevel: "standard",
         whitelist: []
       },
-      (data) => {
+      async (data) => {
         if (chrome.runtime.lastError) return;
         const shieldsUp = data.enabled !== false && !isWhitelisted(host, data.whitelist);
-        applyCosmetic(shieldsUp && data.cosmeticEnabled !== false);
+        const showCosmetic = shieldsUp && data.cosmeticEnabled !== false;
+
         window.dispatchEvent(
           new CustomEvent("kestrel-shield-config", {
             detail: {
               fp: shieldsUp && data.antiFingerprintEnabled !== false,
-              aggressive: shieldsUp && data.blockingLevel === "aggressive"
+              aggressive: shieldsUp && data.blockingLevel === "aggressive",
+              shieldsUp
             }
           })
         );
+
+        applyCosmetic(showCosmetic, host);
+        if (showCosmetic && !cosmeticData) {
+          await ensureCosmeticRules();
+          applyCosmetic(true, host);
+        }
       }
     );
   }

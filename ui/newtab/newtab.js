@@ -2,16 +2,15 @@
 
 const ENGINES = {
   ddg: { name: "DuckDuckGo", url: "https://duckduckgo.com/?q=" },
-  google: { name: "Google", url: "https://www.google.com/search?q=" },
   brave: { name: "Brave", url: "https://search.brave.com/search?q=" },
-  startpage: { name: "Startpage", url: "https://www.startpage.com/do/search?q=" }
+  startpage: { name: "Startpage", url: "https://www.startpage.com/do/search?q=" },
+  google: { name: "Google", url: "https://www.google.com/search?q=" }
 };
 
 const DEFAULT_SHORTCUTS = [
   { title: "GitHub", url: "https://github.com" },
   { title: "ArchWiki", url: "https://wiki.archlinux.org" },
-  { title: "DuckDuckGo", url: "https://duckduckgo.com" },
-  { title: "Proton", url: "https://proton.me" }
+  { title: "YouTube", url: "https://www.youtube.com" }
 ];
 
 const searchForm = document.getElementById("searchForm");
@@ -29,7 +28,7 @@ let shortcuts = [...DEFAULT_SHORTCUTS];
 function setEngine(key) {
   if (!ENGINES[key]) key = "ddg";
   activeEngine = key;
-  searchInput.placeholder = `Search with ${ENGINES[key].name} or enter URL`;
+  searchInput.placeholder = `Search ${ENGINES[key].name} or enter address`;
   engineTabs.forEach((btn) => {
     btn.classList.toggle("active", btn.dataset.engine === key);
   });
@@ -50,22 +49,17 @@ function renderShortcuts() {
   shortcutsGrid.textContent = "";
 
   shortcuts.forEach((item, idx) => {
-    const cell = document.createElement("a");
-    cell.className = "shortcut-cell";
-    cell.href = item.url;
-
-    const mono = document.createElement("span");
-    mono.className = "shortcut-mono";
-    mono.textContent = (item.title || "?").charAt(0).toUpperCase();
+    const link = document.createElement("a");
+    link.className = "shortcut-link";
+    link.href = item.url;
 
     const title = document.createElement("span");
-    title.className = "shortcut-title";
     title.textContent = item.title;
 
     const del = document.createElement("button");
     del.type = "button";
     del.className = "shortcut-del";
-    del.title = "Remove shortcut";
+    del.title = "Remove";
     del.setAttribute("aria-label", `Remove ${item.title}`);
     del.textContent = "×";
     del.addEventListener("click", (e) => {
@@ -76,26 +70,18 @@ function renderShortcuts() {
       renderShortcuts();
     });
 
-    cell.append(mono, title, del);
-    shortcutsGrid.appendChild(cell);
+    link.append(title, del);
+    shortcutsGrid.appendChild(link);
   });
 
   const addBtn = document.createElement("button");
   addBtn.type = "button";
-  addBtn.className = "shortcut-cell shortcut-add";
-
-  const plus = document.createElement("span");
-  plus.className = "shortcut-mono";
-  plus.textContent = "+";
-
-  const label = document.createElement("span");
-  label.className = "shortcut-title";
-  label.textContent = "Add";
-
-  addBtn.append(plus, label);
+  addBtn.className = "shortcut-add";
+  addBtn.title = "Add shortcut";
+  addBtn.textContent = "+";
   addBtn.addEventListener("click", () => {
-    addForm.classList.remove("hidden");
-    addTitle.focus();
+    addForm.classList.toggle("hidden");
+    if (!addForm.classList.contains("hidden")) addTitle.focus();
   });
 
   shortcutsGrid.appendChild(addBtn);

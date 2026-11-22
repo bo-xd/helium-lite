@@ -3,54 +3,44 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>New Tab — Kestrel</title>
+  <title>New Tab</title>
+  <link rel="icon" type="image/png" href="icons/icon48.png">
   <link rel="stylesheet" href="newtab.css">
 </head>
 <body>
+  <a class="corner-link" href="settings.html" title="Kestrel Settings &amp; Privacy">Settings</a>
+
   <main class="shell">
-    <header class="topbar">
-      <div class="brand">
-        <svg class="crest" viewBox="0 0 32 32" width="22" height="22" aria-hidden="true">
-          <path d="M3 9 L29 4 L20 15 L28 17 L13 28 L16 17 L4 15 Z" fill="#e09f3e"/>
-        </svg>
-        <h1>Kestrel</h1>
-      </div>
-      <a class="readout-link" href="settings.html" title="View Kestrel privacy, RAM, and DRM settings">Shield 25,576 &middot; Settings &rarr;</a>
-    </header>
+    <form id="searchForm" class="omnibox" autocomplete="off">
+      <svg class="crest" viewBox="0 0 32 32" width="18" height="18" aria-hidden="true">
+        <path d="M3 9 L29 4 L20 15 L28 17 L13 28 L16 17 L4 15 Z" fill="#e09f3e"/>
+      </svg>
+      <input
+        type="text"
+        id="searchInput"
+        placeholder="Search or enter address"
+        autofocus
+        spellcheck="false"
+        aria-label="Search or enter address"
+      >
+    </form>
 
-    <section class="command-zone">
-      <form id="searchForm" class="search-bar" autocomplete="off">
-        <input
-          type="text"
-          id="searchInput"
-          placeholder="Search or enter URL"
-          autofocus
-          spellcheck="false"
-          aria-label="Search or enter URL"
-        >
-        <button type="submit" class="search-btn">Go</button>
-      </form>
-
+    <div class="meta-row">
       <nav class="engines" id="engineTabs" aria-label="Search engine">
         <button type="button" class="eng-tab active" data-engine="ddg">DuckDuckGo</button>
-        <button type="button" class="eng-tab" data-engine="google">Google</button>
         <button type="button" class="eng-tab" data-engine="brave">Brave</button>
         <button type="button" class="eng-tab" data-engine="startpage">Startpage</button>
+        <button type="button" class="eng-tab" data-engine="google">Google</button>
       </nav>
-    </section>
+      <div class="shortcuts-inline" id="shortcutsGrid"></div>
+    </div>
 
-    <section class="shortcuts-section" aria-label="Pinned shortcuts">
-      <div class="shortcuts-grid" id="shortcutsGrid"></div>
-
-      <form id="addForm" class="add-form hidden" autocomplete="off">
-        <input type="text" id="addTitle" placeholder="Label" maxlength="24" required aria-label="Shortcut label">
-        <input type="text" id="addUrl" placeholder="https://example.com" required aria-label="Shortcut URL">
-        <div class="add-actions">
-          <button type="submit" class="btn-primary">Save</button>
-          <button type="button" id="cancelAdd" class="btn-ghost">Cancel</button>
-        </div>
-      </form>
-    </section>
+    <form id="addForm" class="add-form hidden" autocomplete="off">
+      <input type="text" id="addTitle" placeholder="Label" maxlength="20" required aria-label="Shortcut label">
+      <input type="text" id="addUrl" placeholder="https://example.com" required aria-label="Shortcut URL">
+      <button type="submit" class="btn-primary">Add</button>
+      <button type="button" id="cancelAdd" class="btn-ghost">Cancel</button>
+    </form>
   </main>
   <script src="newtab.js"></script>
 </body>
