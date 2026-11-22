@@ -1,0 +1,112 @@
+--- a/chrome/browser/ui/layout_constants.cc
++++ b/chrome/browser/ui/layout_constants.cc
+@@ -84,7 +84,7 @@
+     case LayoutConstant::kLocationBarTrailingDecorationInnerPadding:
+       return touch_ui ? 3 : 8;
+     case LayoutConstant::kLocationBarHeight:
+-      return touch_ui ? 36 : 34;
++      return touch_ui ? 36 : 30;
+     // LINT.IfChange(LocationBarIconSize)
+     case LayoutConstant::kLocationBarIconSize:
+       return touch_ui ? 20 : 16;
+@@ -110,12 +110,12 @@
+     case LayoutConstant::kTabCloseButtonSize:
+       return touch_ui ? 24 : (features::IsRoundedIconsEnabled() ? 14 : 16);
+     case LayoutConstant::kTabHeight:
+-      return 34 + GetLayoutConstant(LayoutConstant::kTabstripToolbarOverlap);
++      return 30 + GetLayoutConstant(LayoutConstant::kTabstripToolbarOverlap);
+     case LayoutConstant::kTabStripHeight:
+       return GetLayoutConstant(LayoutConstant::kTabHeight) +
+              GetLayoutConstant(LayoutConstant::kTabStripPadding);
+     case LayoutConstant::kTabStripPadding:
+-      return 6;
++      return 4;
+     case LayoutConstant::kTabSeparatorHeight:
+       return touch_ui ? 24 : 20;
+     case LayoutConstant::kTabPreTitlePadding:
+@@ -129,7 +129,7 @@
+     case LayoutConstant::kTabstripToolbarOverlap:
+       return 1;
+     case LayoutConstant::kToolbarButtonHeight:
+-      return touch_ui ? 48 : 34;
++      return touch_ui ? 48 : 30;
+     case LayoutConstant::kToolbarButtonIconSize:
+       return touch_ui ? kDefaultTouchableIconSize
+                       : kDefaultIconSizeChromeRefresh;
+@@ -142,7 +142,7 @@
+     case LayoutConstant::kToolbarDividerWidth:
+       return 2;
+     case LayoutConstant::kToolbarElementPadding:
+-      return touch_ui ? 0 : 4;
++      return touch_ui ? 0 : 3;
+     case LayoutConstant::kToolbarIconDefaultMargin:
+       return touch_ui ? 0 : 2;
+     case LayoutConstant::kToolbarButtonRefreshExpandedMargin:
+--- a/chrome/browser/ui/views/toolbar/toolbar_view.cc
++++ b/chrome/browser/ui/views/toolbar/toolbar_view.cc
+@@ -606,7 +606,8 @@
+   if (!features::IsWebUIAvatarButtonEnabled()) {
+     avatar_ = AddChildView(std::make_unique<AvatarToolbarButton>(browser_));
+     bool show_avatar_toolbar_button =
+-        AvatarToolbarButtonInterface::CanShowForProfile(browser_->GetProfile());
++        browser_->GetProfile()->IsIncognitoProfile() ||
++        browser_->GetProfile()->IsGuestSession();
+ 
+     const std::string sab_value = base::CommandLine::ForCurrentProcess()->
+                                   GetSwitchValueASCII("show-avatar-button");
+--- a/ui/color/ref_color_mixer.cc
++++ b/ui/color/ref_color_mixer.cc
+@@ -28,17 +28,17 @@
+                         ColorProviderKey::ColorMode color_mode) {
+   ColorMixer& mixer = provider->AddMixer();
+   mixer[kColorRefPrimary0] = {SkColorSetRGB(0x00, 0x00, 0x00)};
+-  mixer[kColorRefPrimary10] = {SkColorSetRGB(0x04, 0x1E, 0x49)};
+-  mixer[kColorRefPrimary20] = {SkColorSetRGB(0x06, 0x2E, 0x6F)};
+-  mixer[kColorRefPrimary25] = {SkColorSetRGB(0x07, 0x38, 0x88)};
+-  mixer[kColorRefPrimary30] = {SkColorSetRGB(0x08, 0x42, 0xA0)};
+-  mixer[kColorRefPrimary40] = {SkColorSetRGB(0x0B, 0x57, 0xD0)};
+-  mixer[kColorRefPrimary50] = {SkColorSetRGB(0x1B, 0x6E, 0xF3)};
+-  mixer[kColorRefPrimary60] = {SkColorSetRGB(0x4C, 0x8D, 0xF6)};
+-  mixer[kColorRefPrimary70] = {SkColorSetRGB(0x7C, 0xAC, 0xF8)};
+-  mixer[kColorRefPrimary80] = {SkColorSetRGB(0xA8, 0xC7, 0xFA)};
+-  mixer[kColorRefPrimary90] = {SkColorSetRGB(0xD3, 0xE3, 0xFD)};
+-  mixer[kColorRefPrimary95] = {SkColorSetRGB(0xEC, 0xF3, 0xFE)};
++  mixer[kColorRefPrimary10] = {SkColorSetRGB(0x2A, 0x1B, 0x05)};
++  mixer[kColorRefPrimary20] = {SkColorSetRGB(0x47, 0x2E, 0x0A)};
++  mixer[kColorRefPrimary25] = {SkColorSetRGB(0x5C, 0x3C, 0x0E)};
++  mixer[kColorRefPrimary30] = {SkColorSetRGB(0x74, 0x4D, 0x14)};
++  mixer[kColorRefPrimary40] = {SkColorSetRGB(0xA6, 0x70, 0x21)};
++  mixer[kColorRefPrimary50] = {SkColorSetRGB(0xC6, 0x88, 0x2C)};
++  mixer[kColorRefPrimary60] = {SkColorSetRGB(0xE0, 0x9F, 0x3E)};
++  mixer[kColorRefPrimary70] = {SkColorSetRGB(0xE8, 0xB2, 0x5E)};
++  mixer[kColorRefPrimary80] = {SkColorSetRGB(0xEE, 0xC2, 0x7D)};
++  mixer[kColorRefPrimary90] = {SkColorSetRGB(0xF6, 0xDB, 0xAF)};
++  mixer[kColorRefPrimary95] = {SkColorSetRGB(0xFB, 0xEE, 0xD8)};
+   mixer[kColorRefPrimary99] = {SkColorSetRGB(0xFA, 0xFB, 0xFF)};
+   mixer[kColorRefPrimary100] = {SkColorSetRGB(0xFF, 0xFF, 0xFF)};
+ 
+@@ -137,15 +137,15 @@
+   } else {
+     mixer[kColorRefNeutral0] = {SkColorSetRGB(0x00, 0x00, 0x00)};
+     mixer[kColorRefNeutral4] = {SkColorSetRGB(0x0E, 0x0E, 0x0F)};
+-    mixer[kColorRefNeutral6] = {SkColorSetRGB(0x13, 0x13, 0x14)};
+-    mixer[kColorRefNeutral8] = {SkColorSetRGB(0x16, 0x18, 0x18)};
+-    mixer[kColorRefNeutral10] = {SkColorSetRGB(0x1F, 0x1F, 0x1F)};
+-    mixer[kColorRefNeutral12] = {SkColorSetRGB(0x1F, 0x20, 0x20)};
+-    mixer[kColorRefNeutral15] = {SkColorSetRGB(0x28, 0x28, 0x28)};
+-    mixer[kColorRefNeutral17] = {SkColorSetRGB(0x2A, 0x2A, 0x2A)};
+-    mixer[kColorRefNeutral20] = {SkColorSetRGB(0x30, 0x30, 0x30)};
+-    mixer[kColorRefNeutral22] = {SkColorSetRGB(0x34, 0x35, 0x35)};
+-    mixer[kColorRefNeutral24] = {SkColorSetRGB(0x39, 0x39, 0x39)};
++    mixer[kColorRefNeutral6] = {SkColorSetRGB(0x11, 0x13, 0x17)};
++    mixer[kColorRefNeutral8] = {SkColorSetRGB(0x14, 0x17, 0x1C)};
++    mixer[kColorRefNeutral10] = {SkColorSetRGB(0x18, 0x1B, 0x21)};
++    mixer[kColorRefNeutral12] = {SkColorSetRGB(0x18, 0x1B, 0x21)};
++    mixer[kColorRefNeutral15] = {SkColorSetRGB(0x1E, 0x22, 0x2A)};
++    mixer[kColorRefNeutral17] = {SkColorSetRGB(0x20, 0x24, 0x2C)};
++    mixer[kColorRefNeutral20] = {SkColorSetRGB(0x23, 0x27, 0x30)};
++    mixer[kColorRefNeutral22] = {SkColorSetRGB(0x27, 0x2C, 0x36)};
++    mixer[kColorRefNeutral24] = {SkColorSetRGB(0x2C, 0x31, 0x3C)};
+     mixer[kColorRefNeutral25] = {SkColorSetRGB(0x3c, 0x3c, 0x3c)};
+     mixer[kColorRefNeutral30] = {SkColorSetRGB(0x47, 0x47, 0x47)};
+     mixer[kColorRefNeutral40] = {SkColorSetRGB(0x5E, 0x5E, 0x5E)};
