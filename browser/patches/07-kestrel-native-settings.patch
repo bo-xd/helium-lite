@@ -640,3 +640,26 @@
    }
  
    AddDefaultComponentExtensionsWithBackgroundPages(skip_session_components);
+--- a/extensions/browser/api/declarative_net_request/rules_monitor_service.cc
++++ b/extensions/browser/api/declarative_net_request/rules_monitor_service.cc
+@@ -600,16 +600,11 @@
+         continue;
+       }
+ 
+-      if (!helper.GetStaticRulesetChecksum(extension->id(), source.id(),
+-                                           expected_ruleset_checksum)) {
+-        // This might happen on prefs corruption.
+-        LogLoadRulesetResult(LoadRulesetResult::kErrorChecksumNotFound);
+-        ruleset_failed_to_load = true;
+-        continue;
++      RulesetInfo static_ruleset(std::move(source));
++      if (helper.GetStaticRulesetChecksum(extension->id(), source.id(),
++                                          expected_ruleset_checksum)) {
++        static_ruleset.set_expected_checksum(expected_ruleset_checksum);
+       }
+-
+-      RulesetInfo static_ruleset(std::move(source));
+-      static_ruleset.set_expected_checksum(expected_ruleset_checksum);
+       load_data.rulesets.push_back(std::move(static_ruleset));
+     }
+ 
