@@ -235,6 +235,24 @@ const BUILTIN_ADS: &[&str] = &[
     "metrics.brightcove.com",
     "partnerstack.com",
     "api.partnerstack.com",
+    "tritondigital.com",
+    "streamtheworld.com",
+    "playerservices.streamtheworld.com",
+    "imasdk.googleapis.com",
+    "admob.com",
+    "admob.googleapis.com",
+    "media.admob.com",
+    "smaato.net",
+    "smaato.com",
+    "soma.smaato.net",
+    "sdk.smaato.net",
+    "ads.deezer.com",
+    "ads.iheart.com",
+    "ads.soundcloud.com",
+    "adsserver.megaphone.fm",
+    "ads.fyber.com",
+    "api.content-ad.net",
+    "content-ad.net",
 ];
 
 const BUILTIN_AD_PATHS: &[&str] = &[
@@ -244,6 +262,10 @@ const BUILTIN_AD_PATHS: &[&str] = &[
     "/js/widget/ads.js",
     "/pagead/js/",
     "||vk.com/rtrg",
+    "||redditstatic.com/ads/",
+    "||quora.com/_/ad",
+    "||a.quora.com/qevents.js",
+    "||vid.vidyard.com/ads",
 ];
 
 const BUILTIN_PRIVACY: &[&str] = &[
@@ -398,6 +420,10 @@ const BUILTIN_PRIVACY: &[&str] = &[
     "widgets.pinterest.com",
     "pixel.quora.com",
     "qevents.quora.com",
+    "a.quora.com",
+    "q.quora.com",
+    "idsync.drawbrid.ge",
+    "drawbrid.ge",
     "px.srvcs.tumblr.com",
     "ads.vk.com",
     "ad.mail.ru",
