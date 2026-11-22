@@ -11,6 +11,7 @@
   "hardware_accel": true,
   "widevine_drm": false,
   "adblocker": true,
+  "custom_ui": true,
   "extension_support": true,
   "renderer_process_limit": 3,
   "v8_max_old_space_mb": 384,

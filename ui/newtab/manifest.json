@@ -1,0 +1,10 @@
+{
+  "manifest_version": 3,
+  "name": "Kestrel New Tab",
+  "version": "1.0.0",
+  "description": "Ultra-low-RAM dark start page for Kestrel.",
+  "chrome_url_overrides": {
+    "newtab": "newtab.html"
+  },
+  "permissions": ["storage"]
+}

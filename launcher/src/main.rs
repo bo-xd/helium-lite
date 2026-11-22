@@ -22,6 +22,7 @@ struct Config {
     hardware_accel: bool,
     widevine_drm: bool,
     adblocker: bool,
+    custom_ui: bool,
     extension_support: bool,
     renderer_process_limit: i64,
     v8_max_old_space_mb: i64,
@@ -44,6 +45,7 @@ impl Default for Config {
             hardware_accel: true,
             widevine_drm: false,
             adblocker: true,
+            custom_ui: true,
             extension_support: true,
             renderer_process_limit: 3,
             v8_max_old_space_mb: 384,
@@ -319,6 +321,7 @@ impl Config {
                 ("hardware_accel", JsonVal::Bool(b)) => cfg.hardware_accel = b,
                 ("widevine_drm", JsonVal::Bool(b)) => cfg.widevine_drm = b,
                 ("adblocker", JsonVal::Bool(b)) => cfg.adblocker = b,
+                ("custom_ui", JsonVal::Bool(b)) => cfg.custom_ui = b,
                 ("extension_support", JsonVal::Bool(b)) => cfg.extension_support = b,
                 ("renderer_process_limit", JsonVal::Int(n)) => cfg.renderer_process_limit = n,
                 ("v8_max_old_space_mb", JsonVal::Int(n)) => cfg.v8_max_old_space_mb = n,
@@ -343,7 +346,7 @@ impl Config {
             .collect::<Vec<_>>()
             .join(", ");
         format!(
-            "{{\n  \"browser_binary\": {},\n  \"profile_dir\": {},\n  \"cache_dir\": {},\n  \"search_engine\": {},\n  \"ram_profile\": {},\n  \"strict_security\": {},\n  \"doh_provider\": {},\n  \"webrtc_privacy\": {},\n  \"tab_sleeping\": {},\n  \"hardware_accel\": {},\n  \"widevine_drm\": {},\n  \"adblocker\": {},\n  \"extension_support\": {},\n  \"renderer_process_limit\": {},\n  \"v8_max_old_space_mb\": {},\n  \"widevine_path\": {},\n  \"extra_flags\": [{}]\n}}\n",
+            "{{\n  \"browser_binary\": {},\n  \"profile_dir\": {},\n  \"cache_dir\": {},\n  \"search_engine\": {},\n  \"ram_profile\": {},\n  \"strict_security\": {},\n  \"doh_provider\": {},\n  \"webrtc_privacy\": {},\n  \"tab_sleeping\": {},\n  \"hardware_accel\": {},\n  \"widevine_drm\": {},\n  \"adblocker\": {},\n  \"custom_ui\": {},\n  \"extension_support\": {},\n  \"renderer_process_limit\": {},\n  \"v8_max_old_space_mb\": {},\n  \"widevine_path\": {},\n  \"extra_flags\": [{}]\n}}\n",
             json_escape(&self.browser_binary),
             json_escape(&self.profile_dir),
             json_escape(&self.cache_dir),
@@ -356,6 +359,7 @@ impl Config {
             self.hardware_accel,
             self.widevine_drm,
             self.adblocker,
+            self.custom_ui,
             self.extension_support,
             self.renderer_process_limit,
             self.v8_max_old_space_mb,
@@ -421,6 +425,14 @@ fn adblocker_dir() -> PathBuf {
         return local_share;
     }
     repo_root().join("adblocker")
+}
+
+fn ui_component_dir(sub: &str) -> PathBuf {
+    let local_share = home_dir().join(".local/share/kestrel/ui").join(sub);
+    if local_share.join("manifest.json").is_file() {
+        return local_share;
+    }
+    repo_root().join("ui").join(sub)
 }
 
 fn import_script() -> PathBuf {
@@ -1025,13 +1037,25 @@ fn build_flags(cfg: &Config, profile_dir: &Path, cache_dir: &Path) -> Vec<String
         flags.push("--disable-webgl".to_string());
     }
 
+    let mut load_exts: Vec<String> = Vec::new();
     let adb = adblocker_dir();
-    let adb_ready = cfg.adblocker && adb.join("manifest.json").is_file();
+    if cfg.adblocker && adb.join("manifest.json").is_file() {
+        load_exts.push(adb.display().to_string());
+    }
+    if cfg.custom_ui {
+        for sub in ["newtab", "theme"] {
+            let dir = ui_component_dir(sub);
+            if dir.join("manifest.json").is_file() {
+                load_exts.push(dir.display().to_string());
+            }
+        }
+    }
 
-    if adb_ready {
-        flags.push(format!("--load-extension={}", adb.display()));
+    if !load_exts.is_empty() {
+        let joined = load_exts.join(",");
+        flags.push(format!("--load-extension={joined}"));
         if !cfg.extension_support {
-            flags.push(format!("--disable-extensions-except={}", adb.display()));
+            flags.push(format!("--disable-extensions-except={joined}"));
         }
     } else if !cfg.extension_support {
         flags.push("--disable-extensions".to_string());
@@ -1089,13 +1113,14 @@ fn apply_flatpak_filesystems(
 
 // --- Settings Mode (TUI + CLI) ---
 
-const TOGGLES: [(&str, &str, &str); 7] = [
+const TOGGLES: [(&str, &str, &str); 8] = [
     ("strict_security", "Strict Security (Site Isolation + HTTPS-First + 3P Cookie Block)", "Enforce --site-per-process, HTTPS-First, block 3rd-party cookies & Privacy Sandbox"),
     ("webrtc_privacy", "WebRTC IP Privacy", "Prevent WebRTC local IP leaks (--force-webrtc-ip-handling-policy=disable_non_proxied_udp)"),
     ("tab_sleeping", "Tab Sleeping & Low-RAM Mode", "Aggressive Memory Saver, renderer cap, V8 heap limit, no background net/telemetry"),
     ("hardware_accel", "Hardware Acceleration (VA-API + WebGL)", "GPU rasterization, zero-copy, VA-API video decode/encode for YouTube"),
     ("widevine_drm", "Widevine DRM", "Enable Widevine CDM symlink for protected media (Spotify, Netflix, etc.)"),
     ("adblocker", "Built-in Adblocker (Kestrel Shield)", "Load custom low-RAM MV3 adblocker extension"),
+    ("custom_ui", "Kestrel Dark Theme & Custom New Tab", "Load Kestrel obsidian dark theme and custom start page"),
     ("extension_support", "Extension & Web Store Support", "Allow installing extensions and .crx packages from Chrome Web Store"),
 ];
 
@@ -1107,6 +1132,7 @@ fn get_toggle(cfg: &Config, key: &str) -> Option<bool> {
         "hardware_accel" => Some(cfg.hardware_accel),
         "widevine_drm" => Some(cfg.widevine_drm),
         "adblocker" => Some(cfg.adblocker),
+        "custom_ui" => Some(cfg.custom_ui),
         "extension_support" => Some(cfg.extension_support),
         _ => None,
     }
@@ -1120,6 +1146,7 @@ fn set_toggle(cfg: &mut Config, key: &str, val: bool) -> bool {
         "hardware_accel" => cfg.hardware_accel = val,
         "widevine_drm" => cfg.widevine_drm = val,
         "adblocker" => cfg.adblocker = val,
+        "custom_ui" => cfg.custom_ui = val,
         "extension_support" => cfg.extension_support = val,
         _ => return false,
     }
@@ -1142,11 +1169,11 @@ fn print_settings_status(cfg: &Config) {
         println!("           {}", desc);
     }
     println!();
-    println!("  [8]  [{}] Renderer Process Limit (renderer_process_limit, 1-32)", cfg.renderer_process_limit);
-    println!("  [9]  [{}] V8 Max Heap per Tab (MB) (v8_max_old_space_mb, 128-4096)", cfg.v8_max_old_space_mb);
-    println!("  [10] [{}] RAM Profile (ultra | balanced)", cfg.ram_profile);
-    println!("  [11] [{}] DNS-over-HTTPS Provider (quad9 | cloudflare | mullvad | off)", cfg.doh_provider);
-    println!("  [12] [{}] Default Search Engine (duckduckgo | brave | startpage | google)", cfg.search_engine);
+    println!("  [9]  [{}] Renderer Process Limit (renderer_process_limit, 1-32)", cfg.renderer_process_limit);
+    println!("  [10] [{}] V8 Max Heap per Tab (MB) (v8_max_old_space_mb, 128-4096)", cfg.v8_max_old_space_mb);
+    println!("  [11] [{}] RAM Profile (ultra | balanced)", cfg.ram_profile);
+    println!("  [12] [{}] DNS-over-HTTPS Provider (quad9 | cloudflare | mullvad | off)", cfg.doh_provider);
+    println!("  [13] [{}] Default Search Engine (duckduckgo | brave | startpage | google)", cfg.search_engine);
     println!();
 }
 
@@ -1180,14 +1207,14 @@ fn run_settings_interactive(mut cfg: Config) -> i32 {
                 cfg = Config::default();
                 let _ = save_config(&cfg);
             }
-            "1" | "2" | "3" | "4" | "5" | "6" | "7" => {
+            "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" => {
                 let idx = choice.parse::<usize>().unwrap() - 1;
                 let key = TOGGLES[idx].0;
                 let cur = get_toggle(&cfg, key).unwrap_or(false);
                 set_toggle(&mut cfg, key, !cur);
                 let _ = save_config(&cfg);
             }
-            "8" => {
+            "9" => {
                 print!("Enter Renderer Process Limit (1-32) [{}]: ", cfg.renderer_process_limit);
                 let _ = stdout.flush();
                 let mut raw = String::new();
@@ -1200,7 +1227,7 @@ fn run_settings_interactive(mut cfg: Config) -> i32 {
                     }
                 }
             }
-            "9" => {
+            "10" => {
                 print!("Enter V8 Max Heap per Tab in MB (128-4096) [{}]: ", cfg.v8_max_old_space_mb);
                 let _ = stdout.flush();
                 let mut raw = String::new();
@@ -1213,7 +1240,7 @@ fn run_settings_interactive(mut cfg: Config) -> i32 {
                     }
                 }
             }
-            "10" => {
+            "11" => {
                 cfg.ram_profile = if cfg.ram_profile == "ultra" {
                     cfg.renderer_process_limit = 4;
                     cfg.v8_max_old_space_mb = 512;
@@ -1225,7 +1252,7 @@ fn run_settings_interactive(mut cfg: Config) -> i32 {
                 };
                 let _ = save_config(&cfg);
             }
-            "11" => {
+            "12" => {
                 print!("Enter DoH provider (quad9, cloudflare, mullvad, off) [{}]: ", cfg.doh_provider);
                 let _ = stdout.flush();
                 let mut raw = String::new();
@@ -1237,7 +1264,7 @@ fn run_settings_interactive(mut cfg: Config) -> i32 {
                     }
                 }
             }
-            "12" => {
+            "13" => {
                 print!("Enter search engine (duckduckgo, brave, startpage, google) [{}]: ", cfg.search_engine);
                 let _ = stdout.flush();
                 let mut raw = String::new();
@@ -1327,7 +1354,7 @@ fn run_settings(args: &[String]) -> i32 {
             return 1;
         };
         match key {
-            "strict_security" | "webrtc_privacy" | "tab_sleeping" | "hardware_accel" | "widevine_drm" | "adblocker" | "extension_support" => {
+            "strict_security" | "webrtc_privacy" | "tab_sleeping" | "hardware_accel" | "widevine_drm" | "adblocker" | "custom_ui" | "extension_support" => {
                 match parse_bool(val) {
                     Ok(b) => {
                         set_toggle(&mut cfg, key, b);

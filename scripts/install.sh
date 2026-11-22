@@ -10,6 +10,7 @@ ICON_SCALABLE_DIR="${HOME}/.local/share/icons/hicolor/scalable/apps"
 ICON_128_DIR="${HOME}/.local/share/icons/hicolor/128x128/apps"
 DATA_DIR="${HOME}/.local/share/kestrel"
 ADBLOCKER_DST="${DATA_DIR}/adblocker"
+UI_DST="${DATA_DIR}/ui"
 RUNTIME_BIN="${DATA_DIR}/runtime/chrome"
 CFG_DIR="${XDG_CONFIG_HOME:-${HOME}/.config}/kestrel"
 CACHE_DIR="${XDG_CACHE_HOME:-${HOME}/.cache}/kestrel"
@@ -61,6 +62,13 @@ cp -a \
   "${REPO_ROOT}/adblocker/rules" \
   "${REPO_ROOT}/adblocker/icons" \
   "${ADBLOCKER_DST}/"
+
+# Install Kestrel custom theme & newtab UI if present
+if [[ -d "${REPO_ROOT}/ui" ]]; then
+  rm -rf "${UI_DST}"
+  mkdir -p "${UI_DST}"
+  cp -a "${REPO_ROOT}/ui/." "${UI_DST}/"
+fi
 
 # Install standalone Ungoogled Chromium runtime unless --system-browser is requested
 if [[ "${SYSTEM_BROWSER}" -eq 0 && ! -x "${RUNTIME_BIN}" ]]; then

@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>New Tab — Kestrel</title>
+  <link rel="stylesheet" href="newtab.css">
+</head>
+<body>
+  <main class="shell">
+    <header class="brand">
+      <svg class="crest" viewBox="0 0 64 64" width="52" height="52" aria-hidden="true">
+        <defs>
+          <linearGradient id="kestrelGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#38bdf8"/>
+            <stop offset="100%" stop-color="#6366f1"/>
+          </linearGradient>
+        </defs>
+        <path d="M10 18 L54 10 L38 30 L52 34 L26 54 L32 34 L12 30 Z" fill="url(#kestrelGrad)"/>
+      </svg>
+      <h1>Kestrel</h1>
+    </header>
+
+    <section class="search-wrap">
+      <form id="searchForm" class="search-bar" autocomplete="off">
+        <input
+          type="text"
+          id="searchInput"
+          placeholder="Search with DuckDuckGo or enter URL…"
+          autofocus
+          spellcheck="false"
+        >
+        <button type="submit" class="search-btn" aria-label="Search">Go</button>
+      </form>
+      <div class="engines" id="enginePills" role="group" aria-label="Search engine">
+        <button type="button" class="pill active" data-engine="ddg">DuckDuckGo</button>
+        <button type="button" class="pill" data-engine="google">Google</button>
+        <button type="button" class="pill" data-engine="brave">Brave</button>
+        <button type="button" class="pill" data-engine="startpage">Startpage</button>
+      </div>
+    </section>
+
+    <section class="shortcuts-section">
+      <div class="shortcuts-grid" id="shortcutsGrid"></div>
+
+      <form id="addForm" class="add-form hidden" autocomplete="off">
+        <input type="text" id="addTitle" placeholder="Name (e.g. GitHub)" maxlength="24" required>
+        <input type="text" id="addUrl" placeholder="URL (e.g. https://github.com)" required>
+        <div class="add-actions">
+          <button type="submit" class="btn-primary">Save</button>
+          <button type="button" id="cancelAdd" class="btn-ghost">Cancel</button>
+        </div>
+      </form>
+    </section>
+
+    <footer class="status-bar" aria-label="Active Kestrel protections">
+      <span class="status-pill"><span class="dot ok"></span>Kestrel Shield: 25,576 rules</span>
+      <span class="status-pill"><span class="dot accent"></span>Ultra Low RAM</span>
+      <span class="status-pill"><span class="dot accent"></span>Strict Security</span>
+      <span class="status-pill"><span class="dot ok"></span>Quad9 DoH</span>
+    </footer>
+  </main>
+  <script src="newtab.js"></script>
+</body>
+</html>
