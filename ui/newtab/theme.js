@@ -4,7 +4,7 @@
 // so a non-default color never flashes in on Ctrl+T.
 (() => {
   const SWATCHES = [
-    { id: "kestrel", name: "Kestrel amber", bg: "#111317", tile: "#1c1f26", accent: "#e09f3e" },
+    { id: "kestrel", name: "Kestrel amber", bg: "#111317", tile: "#1a1d24", accent: "#e09f3e" },
     { id: "slate", name: "Slate", bg: "#0f141c", tile: "#18202c", accent: "#6aa9ff" },
     { id: "indigo", name: "Indigo", bg: "#12111a", tile: "#1c1a27", accent: "#8f84f7" },
     { id: "forest", name: "Forest", bg: "#0f1512", tile: "#18221d", accent: "#4fbf6a" },

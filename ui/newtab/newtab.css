@@ -1,7 +1,8 @@
 :root {
   color-scheme: dark;
   --bg: var(--swatch-bg, #111317);
-  --tile: var(--swatch-tile, #1c1f26);
+  --tile-bg: var(--swatch-tile, #1a1d24);
+  --tile: var(--tile-bg);
   --tile-hover: color-mix(in oklab, var(--tile), #fff 6%);
   --panel: color-mix(in oklab, var(--bg), #fff 4%);
   --field: color-mix(in oklab, var(--bg), #000 22%);

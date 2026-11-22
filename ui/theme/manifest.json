@@ -1,21 +1,32 @@
 {
   "manifest_version": 3,
   "name": "Kestrel Matte Graphite Theme",
-  "version": "1.1.0",
-  "description": "Matte graphite browser theme for Kestrel.",
+  "version": "1.2.0",
+  "description": "Unified matte graphite browser theme for Kestrel.",
   "theme": {
     "colors": {
       "frame": [17, 19, 23],
-      "frame_inactive": [14, 16, 20],
-      "toolbar": [24, 27, 33],
-      "tab_text": [230, 233, 239],
+      "frame_inactive": [17, 19, 23],
+      "frame_incognito": [14, 16, 20],
+      "frame_incognito_inactive": [14, 16, 20],
+      "toolbar": [17, 19, 23],
+      "toolbar_incognito": [14, 16, 20],
+      "background_tab": [17, 19, 23],
+      "background_tab_inactive": [17, 19, 23],
+      "background_tab_incognito": [14, 16, 20],
+      "background_tab_incognito_inactive": [14, 16, 20],
+      "tab_text": [241, 244, 249],
       "tab_background_text": [139, 147, 161],
-      "omnibox_background": [17, 19, 23],
+      "tab_background_text_inactive": [139, 147, 161],
+      "omnibox_background": [26, 29, 36],
       "omnibox_text": [230, 233, 239],
       "ntp_background": [17, 19, 23],
       "ntp_text": [230, 233, 239],
-      "toolbar_button_icon": [139, 147, 161],
+      "toolbar_button_icon": [168, 175, 189],
       "bookmark_text": [203, 213, 225]
+    },
+    "tints": {
+      "background_tab": [-1, -1, -1]
     }
   }
 }

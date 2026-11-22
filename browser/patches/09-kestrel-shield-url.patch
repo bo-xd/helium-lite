@@ -1,0 +1,232 @@
+--- a/chrome/browser/browser_about_handler.h
++++ b/chrome/browser/browser_about_handler.h
+@@ -16,6 +16,13 @@
+ bool HandleChromeAboutAndChromeSyncRewrite(
+     GURL* url,
+     content::BrowserContext* browser_context);
++
++// Rewrites kestrel://shield -> chrome-extension://<kestrel_shield_id>/options.html
++// and reverses chrome-extension://<kestrel_shield_id>/options.html -> kestrel://shield.
++bool HandleKestrelShieldURLRewrite(GURL* url,
++                                   content::BrowserContext* browser_context);
++bool HandleKestrelShieldURLReverseRewrite(
++    GURL* url,
++    content::BrowserContext* browser_context);
+ 
+ // Handles special about: URLs that trigger actions instead of navigation.
+--- a/chrome/browser/browser_about_handler.cc
++++ b/chrome/browser/browser_about_handler.cc
+@@ -22,6 +22,12 @@
+ #include "components/policy/core/browser/url_list/url_blocklist_manager.h"
+ #include "content/public/common/content_features.h"
+ #include "extensions/buildflags/buildflags.h"
++
++#if BUILDFLAG(ENABLE_EXTENSIONS)
++#include "extensions/browser/extension_registry.h"
++#include "extensions/common/constants.h"
++#include "extensions/common/extension.h"
++#endif
+ 
+ namespace {
+ 
+@@ -77,6 +83,49 @@
+   // Having re-written the URL, make the chrome: handler process it.
+   return false;
+ }
++
++bool HandleKestrelShieldURLRewrite(GURL* url,
++                                   content::BrowserContext* browser_context) {
++#if BUILDFLAG(ENABLE_EXTENSIONS)
++  if (!browser_context) {
++    return false;
++  }
++  if ((url->SchemeIs("kestrel") || url->SchemeIs(content::kChromeUIScheme)) &&
++      url->GetHost() == "shield") {
++    auto* registry = extensions::ExtensionRegistry::Get(browser_context);
++    if (!registry) {
++      return false;
++    }
++    for (const auto& ext : registry->enabled_extensions()) {
++      if (ext && ext->name() == "Kestrel Shield") {
++        *url = ext->GetResourceURL("options.html");
++        return true;
++      }
++    }
++  }
++#endif
++  return false;
++}
++
++bool HandleKestrelShieldURLReverseRewrite(
++    GURL* url,
++    content::BrowserContext* browser_context) {
++#if BUILDFLAG(ENABLE_EXTENSIONS)
++  if (!browser_context || !url->SchemeIs(extensions::kExtensionScheme)) {
++    return false;
++  }
++  auto* registry = extensions::ExtensionRegistry::Get(browser_context);
++  if (!registry) {
++    return false;
++  }
++  const extensions::Extension* ext =
++      registry->enabled_extensions().GetByID(url->GetHost());
++  if (ext && ext->name() == "Kestrel Shield" &&
++      (url->path() == "/options.html" || url->path() == "options.html")) {
++    *url = GURL("kestrel://shield");
++    return true;
++  }
++#endif
++  return false;
++}
+ 
+ bool HandleNonNavigationAboutURL(const GURL& url,
+--- a/chrome/browser/chrome_content_browser_client.cc
++++ b/chrome/browser/chrome_content_browser_client.cc
+@@ -5242,6 +5242,12 @@
+     part->BrowserURLHandlerCreated(handler);
+   }
+ 
++  // Handler to rewrite kestrel://shield <-> Kestrel Shield options.html.
++  handler->AddHandlerPair(&HandleKestrelShieldURLRewrite,
++                          &HandleKestrelShieldURLReverseRewrite);
++  handler->AddHandlerPair(BrowserURLHandler::null_handler(),
++                          &HandleKestrelShieldURLReverseRewrite);
++
+   // Handler to rewrite chrome://about and chrome://sync URLs.
+   handler->AddHandlerPair(&HandleChromeAboutAndChromeSyncRewrite,
+                           BrowserURLHandler::null_handler());
+--- a/content/browser/renderer_host/navigation_controller_impl.cc
++++ b/content/browser/renderer_host/navigation_controller_impl.cc
+@@ -459,6 +459,13 @@
+   *url_to_load = *virtual_url = original_url;
+   BrowserURLHandlerImpl::GetInstance()->RewriteURLIfNecessary(
+       url_to_load, browser_context, reverse_on_redirect);
++  if (virtual_url->SchemeIs("chrome-extension")) {
++    GURL reversed(*url_to_load);
++    if (BrowserURLHandlerImpl::GetInstance()->ReverseURLRewrite(
++            &reversed, original_url, browser_context)) {
++      *virtual_url = reversed;
++    }
++  }
+   if (virtual_url->SchemeIs(kChromeUIScheme)) {
+     GURL::Replacements replacements;
+     replacements.SetSchemeStr("kestrel");
+@@ -2605,6 +2612,13 @@
+     BrowserURLHandlerImpl::GetInstance()->RewriteURLIfNecessary(
+         &url, browser_context_, &needs_update);
+     new_entry->set_update_virtual_url_with_url(needs_update);
++    if (new_entry->GetVirtualURL().SchemeIs("chrome-extension")) {
++      GURL reversed(new_entry->GetURL());
++      if (BrowserURLHandlerImpl::GetInstance()->ReverseURLRewrite(
++              &reversed, new_entry->GetVirtualURL(), browser_context_)) {
++        new_entry->SetVirtualURL(reversed);
++      }
++    }
+     if (new_entry->GetVirtualURL().SchemeIs(kChromeUIScheme)) {
+       GURL vurl = new_entry->GetVirtualURL();
+--- a/chrome/browser/ui/toolbar/chrome_location_bar_model_delegate.cc
++++ b/chrome/browser/ui/toolbar/chrome_location_bar_model_delegate.cc
+@@ -197,22 +197,30 @@
+     return &vector_icons::kGoogleColorIcon;
+   }
+ 
+-  if (url.SchemeIs(content::kChromeUIScheme)) {
++  if (url.SchemeIs("kestrel") && url.GetHost() == "shield") {
++    return nullptr;
++  }
++
++  if (url.SchemeIs(content::kChromeUIScheme) || url.SchemeIs("kestrel")) {
+     return &(features::IsRoundedIconsEnabled()
+                  ? omnibox::kChromeProductIcon
+                  : omnibox::kProductChromeRefreshOldIcon);
+   }
+ 
+   // If there is no active WebContents (which can happen during toolbar
+   // initialization), no extension chip is shown.
+   content::WebContents* web_contents = GetActiveWebContents();
+-  if (web_contents &&
+-      !extensions::ui_util::GetEnabledExtensionNameForUrl(url, *web_contents)
+-           .empty()) {
+-    return &(features::IsRoundedIconsEnabled()
+-                 ? vector_icons::kChromeExtensionIcon
+-                 : vector_icons::kExtensionChromeRefreshOldIcon);
++  if (web_contents) {
++    const std::u16string ext_name =
++        extensions::ui_util::GetEnabledExtensionNameForUrl(url, *web_contents);
++    if (ext_name == u"Kestrel Shield") {
++      return nullptr;
++    }
++    if (!ext_name.empty()) {
++      return &(features::IsRoundedIconsEnabled()
++                   ? vector_icons::kChromeExtensionIcon
++                   : vector_icons::kExtensionChromeRefreshOldIcon);
++    }
+   }
+ #endif
+--- a/chrome/browser/ui/views/location_bar/location_icon_state_helper.cc
++++ b/chrome/browser/ui/views/location_bar/location_icon_state_helper.cc
+@@ -42,7 +42,17 @@
+     return std::u16string();
+   }
+ 
+-  if (model->GetURL().SchemeIs(content::kChromeUIScheme) ||
++  const GURL& url = model->GetURL();
++  if (url.SchemeIs("kestrel") && url.GetHost() == "shield") {
++    return std::u16string();
++  }
++  if (web_contents &&
++      extensions::ui_util::GetEnabledExtensionNameForUrl(url, *web_contents) ==
++          u"Kestrel Shield") {
++    return std::u16string();
++  }
++
++  if (url.SchemeIs(content::kChromeUIScheme) ||
++      url.SchemeIs("kestrel") ||
+       (contextual_tasks::ShouldShowExpandedSecurityChip() &&
+        model->IsContextualTasksPage())) {
+     return l10n_util::GetStringUTF16(IDS_SHORT_PRODUCT_NAME);
+@@ -86,7 +96,16 @@
+   }
+ 
+   const GURL& url = model->GetURL();
++  if (url.SchemeIs("kestrel") && url.GetHost() == "shield") {
++    return false;
++  }
++  if (web_contents &&
++      extensions::ui_util::GetEnabledExtensionNameForUrl(url, *web_contents) ==
++          u"Kestrel Shield") {
++    return false;
++  }
+   if (url.SchemeIs(content::kChromeUIScheme) ||
++      url.SchemeIs("kestrel") ||
+       url.SchemeIs(extensions::kExtensionScheme) ||
+       url.SchemeIs(url::kFileScheme) ||
+--- a/chrome/browser/ui/views/location_bar/location_bar_view.cc
++++ b/chrome/browser/ui/views/location_bar/location_bar_view.cc
+@@ -24,6 +24,7 @@
+ #include "chrome/browser/browser_process.h"
+ #include "chrome/browser/command_updater.h"
++#include "chrome/browser/extensions/extension_ui_util.h"
+ #include "chrome/browser/extensions/extension_view_host.h"
+ #include "chrome/browser/extensions/extension_view_host_factory.h"
+@@ -2505,6 +2506,21 @@
+   if (ShouldShowAddContextButton()) {
+     return GetOmniboxController()->edit_model()->GetAddContextIcon(dip_size);
+   }
++
++  if (!IsEditingOrEmpty()) {
++    if (const LocationBarModel* model = GetLocationBarModel()) {
++      const GURL url = model->GetURL();
++      content::WebContents* web_contents = GetWebContents();
++      if ((url.SchemeIs("kestrel") && url.GetHost() == "shield") ||
++          (web_contents &&
++           extensions::ui_util::GetEnabledExtensionNameForUrl(
++               url, *web_contents) == u"Kestrel Shield")) {
++        return ui::ImageModel::FromVectorIcon(
++            kKestrelShieldVectorIcon, SkColorSetRGB(0xE0, 0x9F, 0x3E),
++            dip_size);
++      }
++    }
++  }
+ 
+   return omnibox_view_

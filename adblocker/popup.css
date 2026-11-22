@@ -1,14 +1,14 @@
 :root {
   color-scheme: dark;
-  --bg: #16171d;
-  --surface: #1f2129;
-  --raised: #2c2f39;
-  --hover: #1c1d24;
-  --border: #272a33;
+  --bg: #111317;
+  --surface: #1a1d24;
+  --raised: #252932;
+  --hover: #171a20;
+  --border: #232730;
   --ink: #e6e9ef;
   --muted: #8b93a1;
   --accent: #e09f3e;
-  --on-accent: #16171d;
+  --on-accent: #111317;
   --danger: #e07a72;
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
 }
