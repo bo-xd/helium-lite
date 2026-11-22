@@ -45,6 +45,7 @@ mkdir -p "${BIN_DIR}" "${APP_DIR}" "${ICON_SCALABLE_DIR}" "${ICON_128_DIR}" "${D
 
 install -Dm755 "${REPO_ROOT}/launcher/target/release/kestrel" "${BIN_DIR}/kestrel"
 ln -sfn "${BIN_DIR}/kestrel" "${BIN_DIR}/kestrel-settings"
+ln -sfn "${BIN_DIR}/kestrel" "${BIN_DIR}/kestrel-native-host"
 ln -sfn "${REPO_ROOT}/scripts/kestrel-import" "${BIN_DIR}/kestrel-import"
 
 # Install self-contained Kestrel Shield adblocker extension
